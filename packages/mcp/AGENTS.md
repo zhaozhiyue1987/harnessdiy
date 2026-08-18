@@ -1,0 +1,11 @@
+# AGENTS.md — MCP Packages
+
+These rules supplement the package conventions in [packages/AGENTS.md](../AGENTS.md).
+
+- **One mcp-client instance, one server.** `mcp-client` is a namespace function plugin (named exports, no default export): each instance connects one MCP server and registers its tools on `ctx.tools`. Multiple servers mean multiple instances in `cordis.yml`. Disposing the instance disconnects the server, unregisters its tools, and releases the `serverName` reservation; HMR hot-swaps by disposing and recreating the instance.
+- **Model-facing tool names follow `mcp__<serverName>__<rawName>`.** Keep `serverName` within `[A-Za-z0-9_-]{1,32}` so names stay inside the tool-name budget. Renaming the scheme is a public contract change: update `publicToolName`, its consumers, and transcript fixtures together.
+- **A duplicate `serverName` fails loud at load.** `activeServerNames` reservations key on `ctx.root`, so separate apps in one process never shadow each other; a second instance claiming a live name is a configuration error, never a silent override.
+- **Live connections are root-scoped and read-only through the handle.** `liveConnections` keys on `ctx.root`; a management surface (mcp-manager) reads a running instance's inventory through `connectionHandle(ctx, serverName)` and never reaches into server internals.
+- **The mcp-manager wire contract is authored in `src/types.ts`.** Remote method signatures, `McpManagerResult<T>`, and error codes are defined there and mirrored in both generated halves (`typert.host`, `typert.remote-client`); changing any wire field updates all three plus the client `controller` double unwrap (`RemoteResult<McpManagerResult<T>>`) in the same change.
+- **The bind lifecycle is session-scoped and name-derived.** `bind` mounts `McpClientInstance` on the agent's own `ctx` via `toClientConfig(...)`; `mcpInstanceName()` derives a stable name from `sha256(session:server)`, so re-binding a server on a restored session reproduces the same instance and tool names.
+- **The server catalog persists through `settingsNamespace('mcpManager.catalog')`.** A missing settings scope is brought up loud at the earliest resolvable point, never silently skipped.

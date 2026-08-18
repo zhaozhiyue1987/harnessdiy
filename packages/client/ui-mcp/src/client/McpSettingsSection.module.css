@@ -1,0 +1,119 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0;
+}
+
+.description {
+  margin: 0;
+  color: var(--dsh-color-text-secondary, #8a8f98);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.empty {
+  margin: 0;
+  color: var(--dsh-color-text-tertiary, #6b7280);
+  font-size: 13px;
+}
+
+.error {
+  margin: 0;
+  color: var(--dsh-color-danger, #e5484d);
+  font-size: 13px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--dsh-color-border, #2b2f36);
+  border-radius: 8px;
+}
+
+.rowName {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.rowMeta {
+  color: var(--dsh-color-text-secondary, #8a8f98);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.danger {
+  border: 0;
+  background: transparent;
+  color: var(--dsh-color-danger, #e5484d);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.danger:hover {
+  background: color-mix(in srgb, var(--dsh-color-danger, #e5484d) 12%, transparent);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--dsh-color-text-secondary, #8a8f98);
+}
+
+.input {
+  padding: 8px 10px;
+  border: 1px solid var(--dsh-color-border, #2b2f36);
+  border-radius: 8px;
+  background: var(--dsh-color-surface-elevated, #ffffff);
+  color: var(--dsh-color-text, #1f2124);
+  font-size: 13px;
+}
+
+.input:focus {
+  outline: 2px solid var(--dsh-color-accent, #4c8bf5);
+  outline-offset: -1px;
+}
+
+.primary {
+  align-self: flex-start;
+  padding: 8px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--dsh-color-accent, #4c8bf5);
+  color: #ffffff;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

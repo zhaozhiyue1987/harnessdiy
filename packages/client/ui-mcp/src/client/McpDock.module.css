@@ -1,0 +1,64 @@
+.dock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.error {
+  color: var(--dsh-color-danger, #e5484d);
+  font-size: 12px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--dsh-color-border, #2b2f36);
+  border-radius: 999px;
+  background: var(--dsh-color-surface-elevated, #ffffff);
+  font-size: 12px;
+}
+
+.chipName {
+  font-weight: 600;
+}
+
+.chipCount {
+  color: var(--dsh-color-text-secondary, #8a8f98);
+}
+
+.chipAction {
+  border: 0;
+  background: transparent;
+  color: var(--dsh-color-text-secondary, #8a8f98);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0;
+}
+
+.chipAction:hover {
+  color: var(--dsh-color-danger, #e5484d);
+}
+
+.bind {
+  padding: 3px 8px;
+  border: 1px dashed var(--dsh-color-border, #2b2f36);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dsh-color-accent, #4c8bf5);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.bind:hover {
+  border-style: solid;
+}
+
+.chipAction:disabled,
+.bind:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
