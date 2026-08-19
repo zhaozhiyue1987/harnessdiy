@@ -281,6 +281,35 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
 }
 
 /**
+ * Gateway trace correlation metadata captured from the HTTP response headers.
+ * The adapter reads `traceparent` and `x-request-id` from the provider or
+ * gateway response and emits a `trace-meta` chunk so the agent loop can
+ * attach it to the session event.
+ */
+export interface TraceMeta {
+  /** W3C trace-id from the `traceparent` response header. */
+  traceId: string
+  /** Gateway request ID from the `x-request-id` response header. Absent when the gateway did not return one. */
+  requestId?: string
+}
+
+/**
+ * Gateway trace context to inject into the outgoing request. The agent loop
+ * populates this from session identity before each model request; the adapter
+ * writes the corresponding HTTP headers.
+ */
+export interface RequestTrace {
+  /** W3C Trace Context `traceparent` header value (`00-<traceId>-<spanId>-01`). */
+  traceparent: string
+  /** Business correlation ID for the agent run (written as `X-Agent-Run-Id`). */
+  agentRunId?: string
+  /** Platform identifier (written as `X-Agent-Platform`). */
+  agentPlatform?: string
+  /** Application identifier (written as `X-Agent-Application-Id`). */
+  agentApplicationId?: string
+}
+
+/**
  * Raw streaming protocol emitted by adapters.
  * Block indexes correlate interleaved deltas, and `block-end` carries the
  * assembled block. Adapters emit usage before the terminal finish and nothing
@@ -295,6 +324,7 @@ export type StreamChunk =
   | { type: 'tool-call-delta'; index: number; id: CallId; name?: string; argumentsDelta: string }
   | { type: 'block-end'; index: number; block: ContentBlock }
   | { type: 'usage'; usage: TokenUsage }
+  | { type: 'trace-meta'; traceMeta: TraceMeta }
   | {
     type: 'finish'
     reason: FinishReason
@@ -353,4 +383,11 @@ export interface GenerateOptions {
    * generation policy. Ordinary conversation requests leave it unset.
    */
   purpose?: 'compaction' | 'session-title'
+  /**
+   * Gateway trace context to inject into the outgoing HTTP request. When set,
+   * the adapter writes `traceparent` and `X-Agent-*` headers; when absent,
+   * the adapter emits no trace headers. The adapter also reads `traceparent`
+   * and `x-request-id` from the response and emits a `trace-meta` chunk.
+   */
+  requestTrace?: RequestTrace
 }

@@ -1,0 +1,154 @@
+import { describe, expect, it } from 'vitest'
+import {
+  buildTraceparent,
+  captureResponseTraceMeta,
+  consumeResponseTraceMeta,
+  generateSpanId,
+  generateTraceId,
+  generateTraceparent,
+  getTraceContext,
+  traceContextHeaders,
+  withTraceContext,
+} from '@deepseek-ai/dsh-llm'
+
+describe('generateTraceparent', () => {
+  it('produces a valid W3C traceparent header value', () => {
+    const value = generateTraceparent()
+    // Format: 00-<32-hex-trace-id>-<16-hex-span-id>-01
+    expect(value).toMatch(/^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/)
+  })
+
+  it('generates unique trace ids across calls', () => {
+    const a = generateTraceparent()
+    const b = generateTraceparent()
+    // Trace ids (positions 3-34) must differ
+    expect(a.slice(3, 35)).not.toBe(b.slice(3, 35))
+  })
+
+  it('generates unique span ids across calls', () => {
+    const a = generateTraceparent()
+    const b = generateTraceparent()
+    // Span Ids (positions 36-51) must differ
+    expect(a.slice(36, 52)).not.toBe(b.slice(36, 52))
+  })
+})
+
+describe('generateTraceId / generateSpanId / buildTraceparent', () => {
+  it('generateTraceId produces 32 lowercase hex digits', () => {
+    expect(generateTraceId()).toMatch(/^[0-9a-f]{32}$/)
+  })
+
+  it('generateSpanId produces 16 lowercase hex digits', () => {
+    expect(generateSpanId()).toMatch(/^[0-9a-f]{16}$/)
+  })
+
+  it('buildTraceparent assembles components correctly', () => {
+    const traceId = '0'.repeat(32)
+    const spanId = '1'.repeat(16)
+    expect(buildTraceparent(traceId, spanId)).toBe(`00-${traceId}-${spanId}-01`)
+  })
+
+  it('reusing a trace-id with different span-ids produces different traceparents', () => {
+    const traceId = generateTraceId()
+    const a = buildTraceparent(traceId, generateSpanId())
+    const b = buildTraceparent(traceId, generateSpanId())
+    // Same trace-id portion
+    expect(a.slice(3, 35)).toBe(b.slice(3, 35))
+    // Different span-id portion
+    expect(a.slice(36, 52)).not.toBe(b.slice(36, 52))
+  })
+})
+
+describe('activeTraceContext / withTraceContext / getTraceContext', () => {
+  it('returns undefined outside a withTraceContext scope', () => {
+    expect(getTraceContext()).toBeUndefined()
+  })
+
+  it('returns the active context inside a withTraceContext scope', () => {
+    const ctx = { traceparent: generateTraceparent() }
+    withTraceContext(ctx, () => {
+      expect(getTraceContext()).toBe(ctx)
+    })
+  })
+
+  it('restores the outer scope after an inner withTraceContext', () => {
+    const outer = { traceparent: generateTraceparent() }
+    const inner = { traceparent: generateTraceparent() }
+    withTraceContext(outer, () => {
+      expect(getTraceContext()).toBe(outer)
+      withTraceContext(inner, () => {
+        expect(getTraceContext()).toBe(inner)
+      })
+      expect(getTraceContext()).toBe(outer)
+    })
+  })
+})
+
+describe('traceContextHeaders', () => {
+  it('returns empty record outside a withTraceContext scope', () => {
+    const headers = traceContextHeaders()
+    expect(Object.keys(headers)).toHaveLength(0)
+  })
+
+  it('returns traceparent header inside a withTraceContext scope', () => {
+    const traceparent = generateTraceparent()
+    withTraceContext({ traceparent }, () => {
+      const headers = traceContextHeaders()
+      expect(headers.traceparent).toBe(traceparent)
+      expect(headers['x-agent-run-id']).toBeUndefined()
+    })
+  })
+
+  it('includes X-Agent-* headers when provided', () => {
+    withTraceContext({
+      traceparent: generateTraceparent(),
+      agentRunId: 'run-123',
+      agentPlatform: 'harness',
+      agentApplicationId: 'agent-456',
+    }, () => {
+      const headers = traceContextHeaders()
+      expect(headers['x-agent-run-id']).toBe('run-123')
+      expect(headers['x-agent-platform']).toBe('harness')
+      expect(headers['x-agent-application-id']).toBe('agent-456')
+    })
+  })
+})
+
+describe('captureResponseTraceMeta / consumeResponseTraceMeta', () => {
+  it('captures and consumes trace meta from response headers', () => {
+    const headers = new Headers({
+      traceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f60708-01',
+      'x-request-id': 'req-abc-123',
+    })
+    captureResponseTraceMeta(headers)
+    const meta = consumeResponseTraceMeta()
+    expect(meta).toBeDefined()
+    expect(meta!.traceId).toBe('bb7424f8effb4411008f0b7d04f0b07f')
+    expect(meta!.requestId).toBe('req-abc-123')
+    // Consumed — second read returns undefined
+    expect(consumeResponseTraceMeta()).toBeUndefined()
+  })
+
+  it('captures trace meta without requestId', () => {
+    const headers = new Headers({
+      traceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f60708-01',
+    })
+    captureResponseTraceMeta(headers)
+    const meta = consumeResponseTraceMeta()
+    expect(meta).toBeDefined()
+    expect(meta!.traceId).toBe('bb7424f8effb4411008f0b7d04f0b07f')
+    expect(meta!.requestId).toBeUndefined()
+  })
+
+  it('returns undefined when no traceparent header', () => {
+    const headers = new Headers({ 'x-request-id': 'req-only' })
+    captureResponseTraceMeta(headers)
+    expect(consumeResponseTraceMeta()).toBeUndefined()
+  })
+
+  it('returns undefined for malformed traceparent', () => {
+    const headers = new Headers({ traceparent: 'garbage' })
+    captureResponseTraceMeta(headers)
+    expect(consumeResponseTraceMeta()).toBeUndefined()
+  })
+})

@@ -20,10 +20,14 @@ import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@
 import {
   BlockAssembler,
   LlmError,
+  buildTraceparent,
   createAssistantMessage,
   deepFreeze,
   errorChain,
+  generateSpanId,
+  generateTraceId,
   markAgentLoopRequest,
+  withTraceContext,
 } from '@deepseek-ai/dsh-llm'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
@@ -43,7 +47,7 @@ type Phase =
     lastTurn: number
     wakeRequested: boolean
   }
-  | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean }
+  | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean; traceId: string }
 
 type StepEndReason = Extract<TurnEndReason, { kind: 'completed' | 'max-tokens' }>
 
@@ -188,6 +192,7 @@ export class ReactLoopAgent implements Agent {
       turn: this.phase.lastTurn,
       step: 0,
       wakeRequested: false,
+      traceId: generateTraceId(),
     })
     this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, driver.reject)
   }
@@ -332,13 +337,15 @@ export class ReactLoopAgent implements Agent {
   private async step(assembly: PromptAssembly): Promise<StepEndReason | null> {
     /* v8 ignore next -- private callers establish the running phase before executing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": step outside running phase`)
-    const { turn, step, abort: { signal } } = this.phase
+    const { turn, step, abort: { signal }, traceId } = this.phase
     signal.throwIfAborted()
     const system = renderPrompt(assembly)
 
     while (true) {
+      const traceparent = buildTraceparent(traceId, generateSpanId())
+      const traceCtx = { traceparent }
       const { request, preparedCall } = await this.buildRequest(
-        turn, step, assembly.tools, system, this.session.deriveMessages(), signal,
+        turn, step, assembly.tools, system, this.session.deriveMessages(), signal, traceparent,
       )
       const assembler = new BlockAssembler()
       const chunkSeqs: number[] = []
@@ -385,6 +392,7 @@ export class ReactLoopAgent implements Agent {
           step,
           message,
           ...assembler.usage === undefined ? {} : { usage: assembler.usage },
+          ...assembler.traceMeta === undefined ? {} : { traceMeta: assembler.traceMeta },
         },
         { surfaceOp: 'append', sourceEventSeqs: chunkSeqs },
       )
@@ -392,9 +400,16 @@ export class ReactLoopAgent implements Agent {
 
       const toolCalls = message.content.filter(block => block.type === 'tool-call')
       if (toolCalls.length === 0) return { kind: 'completed' }
-      const { concluded } = await executeToolCalls(
-        this.loopCtx, turn, step, toolCalls, signal,
-        context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
+      // Run tool calls inside the trace context so MCP transports can read
+      // the active traceparent and inject W3C Trace Context headers into
+      // their HTTP requests. Each step shares the same span-id as its LLM
+      // request because the gateway treats them as children of the same
+      // gateway span.
+      const { concluded } = await withTraceContext(traceCtx, () =>
+        executeToolCalls(
+          this.loopCtx, turn, step, toolCalls, signal,
+          context => this.inbox.splice('next-step', this.inbox.nextStep.length, 0, [context]),
+        ),
       )
       return concluded ? { kind: 'completed' } : null
     }
@@ -411,6 +426,7 @@ export class ReactLoopAgent implements Agent {
     system: string,
     boundaryMessages: Message[],
     signal: AbortSignal,
+    traceparent: string,
   ): Promise<{ request: GenerateOptions; preparedCall?: PreparedLlmCall }> {
     const { session } = this
 
@@ -489,6 +505,7 @@ export class ReactLoopAgent implements Agent {
       ...header.system !== undefined ? { system: header.system } : {},
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,
+      requestTrace: { traceparent },
       signal,
     }))
     return { request, ...preparedCall === undefined ? {} : { preparedCall } }

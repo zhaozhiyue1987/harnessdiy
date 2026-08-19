@@ -116,6 +116,25 @@ describe('BlockAssembler', () => {
     assembler.push({ type: 'usage', usage: { inputTokens: 5, outputTokens: 3 } })
     expect(assembler.usage).toEqual({ inputTokens: 5, outputTokens: 3 })
   })
+
+  it('captures trace-meta from the trace-meta chunk', () => {
+    const assembler = new BlockAssembler()
+    assembler.push({ type: 'text-delta', index: 0, text: 'msg' })
+    assembler.push({ type: 'usage', usage: { inputTokens: 5, outputTokens: 3 } })
+    assembler.push({
+      type: 'trace-meta',
+      traceMeta: { traceId: 'bb7424f8effb4411008f0b7d04f0b07f', requestId: 'req-123' },
+    })
+    assembler.push({ type: 'finish', reason: { kind: 'stop' } })
+    expect(assembler.traceMeta).toEqual({ traceId: 'bb7424f8effb4411008f0b7d04f0b07f', requestId: 'req-123' })
+  })
+
+  it('returns undefined traceMeta when no trace-meta chunk was received', () => {
+    const assembler = new BlockAssembler()
+    assembler.push({ type: 'text-delta', index: 0, text: 'msg' })
+    assembler.push({ type: 'finish', reason: { kind: 'stop' } })
+    expect(assembler.traceMeta).toBeUndefined()
+  })
 })
 
 describe('assertNever', () => {

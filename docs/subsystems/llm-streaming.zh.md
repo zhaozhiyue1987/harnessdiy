@@ -153,6 +153,45 @@ type ContextFormed =
 
 <a id="streamchunk--the-raw-protocol"></a>
 
+## `TraceMeta` 和 `RequestTrace` — 网关 Trace 关联
+
+当模型端点位于生成 W3C Trace Context 的网关（如 Higress）之后时，适配器在外出请求中注入 `traceparent` 和 `X-Agent-*` 头，然后从响应中读取 `traceparent` 和 `x-request-id`。捕获的关联 ID 作为 `trace-meta` 块流经流，最终附着在 `assistant/message` 会话事件上。
+
+```ts type-equiv
+/**
+ * Gateway trace correlation metadata captured from the HTTP response headers.
+ * The adapter reads `traceparent` and `x-request-id` from the provider or
+ * gateway response and emits a `trace-meta` chunk so the agent loop can
+ * attach it to the session event.
+ */
+interface TraceMeta {
+  /** W3C trace-id from the `traceparent` response header. */
+  traceId: string
+  /** Gateway request ID from the `x-request-id` response header. */
+  requestId: string
+}
+```
+
+```ts type-equiv
+/**
+ * Gateway trace context to inject into the outgoing request. The agent loop
+ * populates this from session identity before each model request; the adapter
+ * writes the corresponding HTTP headers.
+ */
+interface RequestTrace {
+  /** W3C Trace Context `traceparent` header value (`00-<traceId>-<spanId>-01`). */
+  traceparent: string
+  /** Business correlation ID for the agent run (written as `X-Agent-Run-Id`). */
+  agentRunId?: string
+  /** Platform identifier (written as `X-Agent-Platform`). */
+  agentPlatform?: string
+  /** Application identifier (written as `X-Agent-Application-Id`). */
+  agentApplicationId?: string
+}
+```
+
+<a id="streamchunk--the-raw-protocol"></a>
+
 ## `StreamChunk`：原始协议
 
 一个流式响应交错包含多种类型的块（文本、推理（reasoning）、多个工具调用）。`index` 将每个 delta 关联到其所属块；`block-end` 携带完整组装好的 `ContentBlock`，消费方无需自行重新组装 delta。这是一个**封闭的**可辨识联合类型：对 `type` 的 `switch` 以 `assertNever` 结尾，因此新增变体会在每个必须处理它的消费方处触发编译错误。
@@ -173,6 +212,7 @@ type StreamChunk =
   | { type: 'tool-call-delta'; index: number; id: CallId; name?: string; argumentsDelta: string }
   | { type: 'block-end'; index: number; block: ContentBlock }
   | { type: 'usage'; usage: TokenUsage }
+  | { type: 'trace-meta'; traceMeta: TraceMeta }
   | {
     type: 'finish'
     reason: FinishReason
@@ -300,6 +340,8 @@ declare class BlockAssembler {
   blocks(): ContentBlock[];
   /** Usage from the `usage` chunk; undefined until one arrives. */
   get usage(): TokenUsage | undefined;
+  /** Gateway trace correlation from the `trace-meta` chunk; undefined until one arrives. */
+  get traceMeta(): TraceMeta | undefined;
   /** Finish reason from the `finish` chunk; `{kind: 'stop'}` when the stream ended without one. */
   get finish(): FinishReason;
   /** Adapter-private replay state from the terminal finish chunk, if any. */
@@ -502,6 +544,13 @@ interface GenerateOptions {
    * generation policy. Ordinary conversation requests leave it unset.
    */
   purpose?: 'compaction' | 'session-title'
+  /**
+   * Gateway trace context to inject into the outgoing HTTP request. When set,
+   * the adapter writes `traceparent` and `X-Agent-*` headers; when absent,
+   * the adapter emits no trace headers. The adapter also reads `traceparent`
+   * and `x-request-id` from the response and emits a `trace-meta` chunk.
+   */
+  requestTrace?: RequestTrace
 }
 ```
 

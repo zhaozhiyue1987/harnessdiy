@@ -12,7 +12,7 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { assertNever, createToolResultMessage, type ToolCallBlock } from '@deepseek-ai/dsh-llm'
+import { assertNever, consumeResponseTraceMeta, createToolResultMessage, type ToolCallBlock, type TraceMeta } from '@deepseek-ai/dsh-llm'
 import type { Session, UserMessage } from '@deepseek-ai/dsh-session'
 import { TOOL_ABORTED_BEFORE_DISPATCH, TOOL_RUNTIME_SCHEDULER, type ToolExecutionInput, type ToolExecutionMode, type ToolExecutionResult, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 
@@ -27,6 +27,8 @@ interface Slot {
   exec: ToolRunContext
   result: ToolExecutionResult
   needsPost: boolean
+  /** Gateway trace metadata captured after the tool's HTTP response, if any. */
+  traceMeta?: TraceMeta
 }
 
 /** One scheduler group outcome, including a drained cancellation. */
@@ -152,7 +154,7 @@ async function runGroup(
         ? await ctx.tools[TOOL_RUNTIME_SCHEDULER].finalize(slot.exec, slot.result)
         : ctx.tools[TOOL_RUNTIME_SCHEDULER].finish(slot.exec, slot.result)
       // oxlint-disable-next-line typescript/no-non-null-assertion -- bounded index
-      appendToolResult(session, turn, step, call!.block, result, callSeqs[committed]!)
+      appendToolResult(session, turn, step, call!.block, result, callSeqs[committed]!, slot.traceMeta)
       for (const context of result.additionalContexts ?? []) acceptContext(context)
       concluded ||= result.concludesTurn === true
       committed++
@@ -172,7 +174,11 @@ async function runGroup(
       case 'dispatch': {
         const promise = ctx.tools[TOOL_RUNTIME_SCHEDULER].dispatch(prepared.exec).then(
           (outcome) => {
-            slots[index] = { exec: prepared.exec, result: outcome.result, needsPost: outcome.kind === 'post-result' }
+            // Capture gateway trace metadata from the MCP transport's HTTP
+            // response headers immediately after dispatch resolves, while the
+            // async trace context is still active for this tool call.
+            const traceMeta = consumeResponseTraceMeta()
+            slots[index] = { exec: prepared.exec, result: outcome.result, needsPost: outcome.kind === 'post-result', ...traceMeta !== undefined ? { traceMeta } : {} }
             return index
           },
           (error: unknown) => {
@@ -272,6 +278,7 @@ function appendToolResult(
   block: ToolCallBlock,
   result: ToolExecutionResult,
   callSeq: number,
+  traceMeta?: TraceMeta,
 ): void {
   const message = createToolResultMessage({
     callId: block.id,
@@ -285,5 +292,6 @@ function appendToolResult(
     // The tool's private presentation payload (e.g. a result-time diff),
     // persisted so a UI bridge reproduces the card on replay.
     ...result.meta !== undefined ? { meta: result.meta } : {},
+    ...traceMeta !== undefined ? { traceMeta } : {},
   }, { surfaceOp: 'append', sourceEventSeqs: [callSeq] })
 }

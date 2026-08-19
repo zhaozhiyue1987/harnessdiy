@@ -9,6 +9,7 @@ import type {
   TokenUsage,
   ToolResultMessage,
   ToolSchema,
+  TraceMeta,
   UserMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from './json.ts'
@@ -270,7 +271,7 @@ export interface SessionEventMap {
    * the model output and its accounting travel together (there is no separate
    * usage record). `usage` is absent when the adapter reported none.
    */
-  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage }
+  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; traceMeta?: TraceMeta }
   /**
    * The model requested one tool invocation: `name` with the raw `arguments`
    * JSON string exactly as the model produced it (unparsed). `callId` pairs the
@@ -294,6 +295,8 @@ export interface SessionEventMap {
     message: ToolResultMessage
     error?: { name: string; code: string }
     meta?: JsonValue
+    /** Gateway trace correlation metadata when the tool call transited a Higress gateway. */
+    traceMeta?: TraceMeta
   }
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }

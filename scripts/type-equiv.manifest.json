@@ -353,6 +353,16 @@
     },
     {
       "doc": "docs/subsystems/llm-streaming.md",
+      "symbol": "TraceMeta",
+      "source": "packages/llm/llm/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/llm-streaming.md",
+      "symbol": "RequestTrace",
+      "source": "packages/llm/llm/src/types.ts"
+    },
+    {
+      "doc": "docs/subsystems/llm-streaming.md",
       "symbol": "StreamChunk",
       "source": "packages/llm/llm/src/types.ts"
     },

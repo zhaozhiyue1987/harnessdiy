@@ -16,6 +16,7 @@ import type {
   LlmResolvedModelInfo,
   ResolvedRetryPolicy,
   StreamChunk,
+  TraceMeta,
 } from '@deepseek-ai/dsh-llm'
 import type { CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { idleWatchdog, timeoutOf } from '@deepseek-ai/dsh-timeout'
@@ -127,6 +128,23 @@ function providerRetryAfterMs(value: string | null): number | undefined {
 function requestId(headers: Headers): ReturnType<typeof ProviderRequestId> | undefined {
   const value = headers.get('x-request-id') ?? headers.get('x-deepseek-request-id')
   return value === null || value.length === 0 ? undefined : ProviderRequestId(value)
+}
+
+/** Extract W3C trace-id from the `traceparent` response header. */
+function traceIdFromParent(header: string | null): string | undefined {
+  if (header === null) return undefined
+  // traceparent format: 00-<32-hex-trace-id>-<16-hex-span-id>-<2-hex-flags>
+  const match = /^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/.exec(header)
+  return match?.[1]
+}
+
+/** Read gateway trace metadata from the response headers. */
+function traceMetaFromHeaders(headers: Headers): TraceMeta | undefined {
+  const traceparent = headers.get('traceparent')
+  const requestIdValue = headers.get('x-request-id') ?? headers.get('x-deepseek-request-id')
+  const traceId = traceIdFromParent(traceparent)
+  if (traceId === undefined) return undefined
+  return { traceId, ...requestIdValue !== null && requestIdValue.length > 0 ? { requestId: requestIdValue } : {} }
 }
 
 /**
@@ -280,7 +298,7 @@ export class DeepSeekAdapter extends LlmAdapter {
     // Prepared outside the try so the TRANSPORT label below covers exactly the
     // transport boundary, never a serialization failure.
     const payload = JSON.stringify(body)
-    const headers = {
+    const headers: Record<string, string> = {
       'authorization': `Bearer ${apiKey}`,
       'content-type': 'application/json',
       'accept': 'text/event-stream',
@@ -291,6 +309,20 @@ export class DeepSeekAdapter extends LlmAdapter {
         : {},
       ...options.purpose === 'compaction'
         ? { 'x-deepseek-harness-compact': '1' }
+        : {},
+      ...options.requestTrace !== undefined
+        ? {
+          traceparent: options.requestTrace.traceparent,
+          ...options.requestTrace.agentRunId !== undefined
+            ? { 'x-agent-run-id': options.requestTrace.agentRunId }
+            : {},
+          ...options.requestTrace.agentPlatform !== undefined
+            ? { 'x-agent-platform': options.requestTrace.agentPlatform }
+            : {},
+          ...options.requestTrace.agentApplicationId !== undefined
+            ? { 'x-agent-application-id': options.requestTrace.agentApplicationId }
+            : {},
+        }
         : {},
     }
 
@@ -339,6 +371,13 @@ export class DeepSeekAdapter extends LlmAdapter {
     }
     if (!response.body) {
       throw new LlmError('DeepSeek API returned no response body', 'EMPTY_RESPONSE')
+    }
+
+    // Emit trace correlation metadata from the gateway response headers before
+    // the SSE body so the assembler captures it alongside usage data.
+    const traceMeta = traceMetaFromHeaders(response.headers)
+    if (traceMeta !== undefined) {
+      yield { type: 'trace-meta', traceMeta }
     }
 
     yield* translate(parseSse(response.body, onComment))

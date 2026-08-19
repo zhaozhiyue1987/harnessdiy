@@ -10,7 +10,7 @@ import { CallId } from './brand.ts'
 import { assertNever } from './never.ts'
 import { createMessage } from './message.ts'
 import type { Message, MessageSource } from './message.ts'
-import type { ContentBlock, FinishReason, StreamChunk, TokenUsage } from './types.ts'
+import type { ContentBlock, FinishReason, StreamChunk, TokenUsage, TraceMeta } from './types.ts'
 
 interface PartialBlock {
   blockType: string
@@ -37,6 +37,7 @@ export class BlockAssembler {
   private partials = new Map<number, PartialBlock>()
   private order: number[] = []
   private _usage: TokenUsage | undefined
+  private _traceMeta: TraceMeta | undefined
   private _finish: FinishReason | undefined
   private _replayState: unknown = undefined
 
@@ -82,6 +83,10 @@ export class BlockAssembler {
       }
       case 'usage': {
         this._usage = chunk.usage
+        return
+      }
+      case 'trace-meta': {
+        this._traceMeta = chunk.traceMeta
         return
       }
       case 'finish': {
@@ -141,6 +146,11 @@ export class BlockAssembler {
   /** Usage from the `usage` chunk; undefined until one arrives. */
   get usage(): TokenUsage | undefined {
     return this._usage
+  }
+
+  /** Gateway trace correlation from the `trace-meta` chunk; undefined until one arrives. */
+  get traceMeta(): TraceMeta | undefined {
+    return this._traceMeta
   }
 
   /** Finish reason from the `finish` chunk; `{kind: 'stop'}` when the stream ended without one. */
