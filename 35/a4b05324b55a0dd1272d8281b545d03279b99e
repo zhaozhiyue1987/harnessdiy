@@ -1,0 +1,23 @@
+.agents/notes/implemented/feature/2026-08-18-higress-gateway-trace.i18n.yaml
+  s_2083e7ed01e3e7::t_cfb45e13d662b5 1-6
+docs/subsystems/llm-streaming.i18n.yaml
+  s_2083e7ed01e3e7::t_f798f9645eb2d9 5-6
+docs/subsystems/session.i18n.yaml
+  s_2083e7ed01e3e7::t_88e38464fbc364 5-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "35a4b05324b55a0dd1272d8281b545d03279b99e",
+  "prompts": {},
+  "sessions": {
+    "s_2083e7ed01e3e7": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82a804813d54e62f79bf9e",
+        "model": "AI/GLM-5.1"
+      },
+      "human_author": "zhaozhiyue1987 <128685448+zhaozhiyue1987@users.noreply.github.com>"
+    }
+  }
+}
