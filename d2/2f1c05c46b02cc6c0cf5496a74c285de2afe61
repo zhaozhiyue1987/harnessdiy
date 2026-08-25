@@ -1,0 +1,175 @@
+packages/bundle/mcp-dsh/package.json
+  s_2083e7ed01e3e7::t_0bf899ef760a79 1-40,42-50
+  s_2083e7ed01e3e7::t_6ed27831a9d925 41
+packages/bundle/README.md
+  s_2083e7ed01e3e7::t_dbe8b6b72a6f31 12
+  s_2083e7ed01e3e7::t_c691e26d90cef2 13
+.agents/notes/implemented/bug-fix/2026-08-18-mcp-session-expiry-auto-recovery.zh.md
+  s_2083e7ed01e3e7::t_9c6cb683031a61 1-4,6-10,12-35
+  s_2083e7ed01e3e7::t_fa14f4d591e04a 11
+  s_2083e7ed01e3e7::t_e1ac8c6922679f 5
+.agents/notes/implemented/feature/2026-08-06-mcp-client-auto-reconnect.i18n.yaml
+  s_2083e7ed01e3e7::t_cbb36c3faaba07 5-6
+docs/config-catalog.i18n.yaml
+  s_2083e7ed01e3e7::t_2db9118009e1dc 5
+  s_2083e7ed01e3e7::t_24a7216849cc86 6
+scripts/check-workspace-constraints.ts
+  s_2083e7ed01e3e7::t_f7d56eff29e4a6 138
+.agents/notes/implemented/feature/2026-08-06-mcp-client-auto-reconnect.zh.md
+  s_2083e7ed01e3e7::t_ac1af4903b5ceb 35
+packages/bundle/README.i18n.yaml
+  s_2083e7ed01e3e7::t_83295c95bb5d35 5-6
+.agents/notes/implemented/feature/2026-08-18-mcp-dock-detail-and-alignment.md
+  s_2083e7ed01e3e7::t_9a13b8764f2c3d 1-31
+packages/mcp/mcp-client/src/tools.ts
+  s_2083e7ed01e3e7::t_2e108df48899e9 32-35,37
+  s_2083e7ed01e3e7::t_eebf9b1b34551f 106-144,146-147
+  s_2083e7ed01e3e7::t_f29e1b1d21e13d 330-336
+  s_2083e7ed01e3e7::t_b5283d252df77a 38-44
+  s_2083e7ed01e3e7::t_19f2fb76bce408 145
+  s_2083e7ed01e3e7::t_97e79f39416f0d 322,342-343
+  s_2083e7ed01e3e7::t_977977a69e8c5d 321,323-329,337-341
+  s_2083e7ed01e3e7::t_2abef436d6eb94 30-31,36
+docs/user/guide/mcp.md
+  s_2083e7ed01e3e7::t_d992301a40b890 97
+packages/bundle/mcp-dsh/README.zh.md
+  s_2083e7ed01e3e7::t_2bd5b88f29f8a2 11
+  s_2083e7ed01e3e7::t_8706ce2050a9e3 1-4,6-10,12-19
+  s_2083e7ed01e3e7::t_9309a2ac6a88dc 5
+docs/user/guide/mcp.i18n.yaml
+  s_2083e7ed01e3e7::t_7d961a2c60520a 5-6
+.agents/notes/implemented/bug-fix/2026-08-18-mcp-session-expiry-auto-recovery.md
+  s_2083e7ed01e3e7::t_62538c36679f3d 1-10,12-35
+  s_2083e7ed01e3e7::t_fd30de2516b289 11
+packages/bundle/mcp-dsh/src/index.ts
+  s_2083e7ed01e3e7::t_31cd6223307dbf 2-5,9
+  s_2083e7ed01e3e7::t_ddddd0e2344ac0 1,6-8
+packages/mcp/mcp-client/src/transport.ts
+  s_2083e7ed01e3e7::t_f785d7cd202a6a 53
+  s_2083e7ed01e3e7::t_c1166b8cd3c02a 48-51,57-63
+  s_2083e7ed01e3e7::t_88b4a11190ec2a 52,54-55,64
+  s_2083e7ed01e3e7::t_b181875697ff75 65-67
+packages/llm/llm/tests/trace-context.spec.ts
+  s_2083e7ed01e3e7::t_b7e6e9db9d779c 128,130-136,145,151
+  s_2083e7ed01e3e7::t_024a6878ffd3e7 137
+  s_2083e7ed01e3e7::t_1af607ea45f86d 142-144
+  s_2083e7ed01e3e7::t_7e043db129d7c8 146-150
+  s_2083e7ed01e3e7::t_f93881a7783065 152-154
+docs/config-catalog.zh.md
+  s_2083e7ed01e3e7::t_f40d47bf73e906 3282
+.agents/notes/implemented/feature/2026-08-06-mcp-client-auto-reconnect.md
+  s_2083e7ed01e3e7::t_d99eb790cf2621 35
+packages/client/ui-mcp/src/client/McpDock.tsx
+  s_2083e7ed01e3e7::t_b8ba78c229721d 28,43-54,60-71,93-110
+packages/bundle/mcp-dsh/tsconfig.json
+  s_2083e7ed01e3e7::t_cb4390a7f3ed48 1-18
+.agents/notes/implemented/feature/2026-08-18-mcp-dock-detail-and-alignment.i18n.yaml
+  s_2083e7ed01e3e7::t_8bfceba634a7f9 1-6
+docs/persistence-catalog.i18n.yaml
+  s_2083e7ed01e3e7::t_f9932835a83959 5
+  s_2083e7ed01e3e7::t_4199fbd35ad60a 6
+packages/bundle/README.zh.md
+  s_2083e7ed01e3e7::t_eb0f1c3de6a53d 12
+  s_2083e7ed01e3e7::t_4e27fdb38179c7 13
+docs/user/guide/mcp.zh.md
+  s_2083e7ed01e3e7::t_0eacb95c537d62 99
+packages/bundle/mcp-dsh/README.i18n.yaml
+  s_2083e7ed01e3e7::t_93de7497d7f86a 1-4
+  s_2083e7ed01e3e7::t_8cfadd25a25486 5
+  s_2083e7ed01e3e7::t_809231914bb897 6
+packages/client/ui-mcp/README.md
+  s_2083e7ed01e3e7::t_957fa30b05ad86 18
+docs/subsystems/llm-streaming.zh.md
+  s_2083e7ed01e3e7::t_9086b01caf9c61 165
+  s_2083e7ed01e3e7::t_1a4ada993051f6 162-164
+  s_2083e7ed01e3e7::t_8bf12ad788bfa1 166-168
+packages/client/ui-mcp/src/client/McpDock.module.css
+  s_2083e7ed01e3e7::t_6d91251c19e309 1-4,6-24,47-67,107-164
+packages/client/ui-mcp/README.zh.md
+  s_2083e7ed01e3e7::t_84c63745189820 18
+packages/bundle/mcp-dsh/cordis.patch.yml
+  s_2083e7ed01e3e7::t_c97c165e682be3 1-13
+docs/persistence-catalog.md
+  s_2083e7ed01e3e7::t_89075b1a150262 93,218,231,236,408-424,563,577,652,681,694,705,739,758,830-831,835,915,931,950
+docs/config-catalog.md
+  s_2083e7ed01e3e7::t_17c7f89a4e569f 3281
+.agents/notes/implemented/bug-fix/2026-08-18-mcp-session-expiry-auto-recovery.i18n.yaml
+  s_2083e7ed01e3e7::t_4800afa32acc26 1-4
+  s_2083e7ed01e3e7::t_8bea14e0a9a439 5-6
+packages/mcp/mcp-client/tests/mcp-client.spec.ts
+  s_2083e7ed01e3e7::t_32b3d740e0cd54 530,534-553,869
+  s_2083e7ed01e3e7::t_a259a7e00cd2e9 100
+  s_2083e7ed01e3e7::t_af3ad537dba7a4 527-529
+  s_2083e7ed01e3e7::t_ffe9187a486e50 531-533
+  s_2083e7ed01e3e7::t_284e7679037b18 866-868
+  s_2083e7ed01e3e7::t_ff0d289b7e267b 870-872
+docs/subsystems/llm-streaming.md
+  s_2083e7ed01e3e7::t_4633ee236a23d7 165
+  s_2083e7ed01e3e7::t_5605aa6fe1ac57 162-164
+  s_2083e7ed01e3e7::t_3bcef33beb8b49 166-168
+packages/mcp/mcp-client/README.i18n.yaml
+  s_2083e7ed01e3e7::t_4800afa32acc26 5-6
+packages/mcp/mcp-client/README.zh.md
+  s_2083e7ed01e3e7::t_601fb43f03980f 122
+scripts/verify-package-readme-model-experience.ts
+  s_2083e7ed01e3e7::t_64458c7bc77938 114
+  s_2083e7ed01e3e7::t_d510e6e41c0b6d 115-117
+packages/bundle/mcp-dsh/README.md
+  s_2083e7ed01e3e7::t_9d50ccf94d90f5 11
+  s_2083e7ed01e3e7::t_13bd5bc9c564c2 1-10,12-19
+packages/mcp/mcp-client/src/connection.ts
+  s_2083e7ed01e3e7::t_71cd69eb5dacd7 143-147,149,153,155
+  s_2083e7ed01e3e7::t_7f4c7f012576b4 232-234
+  s_2083e7ed01e3e7::t_59f2b1fcc1b981 251-253
+  s_2083e7ed01e3e7::t_b78f57973aeab3 376-378
+  s_2083e7ed01e3e7::t_c331951990d120 345-348
+  s_2083e7ed01e3e7::t_42a3aa60291f67 156
+  s_2083e7ed01e3e7::t_e887a991241d29 132-138,148,150-152,154
+packages/client/ui-mcp/src/client/locales.ts
+  s_2083e7ed01e3e7::t_d9e2554ed5b0da 24,28
+  s_2083e7ed01e3e7::t_04178bc0f01fe1 66,70
+  s_2083e7ed01e3e7::t_88d9f19a9751c4 25-27
+  s_2083e7ed01e3e7::t_dcd4cb82785a66 67-69
+packages/mcp/mcp-client/README.md
+  s_2083e7ed01e3e7::t_a921febf4fa83d 122
+packages/client/ui-mcp/README.i18n.yaml
+  s_2083e7ed01e3e7::t_a74d4acac299e3 5-6
+tsconfig.host.json
+  s_2083e7ed01e3e7::t_ebbb575c159069 249
+  s_2083e7ed01e3e7::t_c4181f7ae09323 250
+packages/bundle/mcp-dsh/tests/mcp-dsh.spec.ts
+  s_2083e7ed01e3e7::t_d99a0c3177d80b 1-21
+.agents/notes/implemented/feature/2026-08-18-mcp-dock-detail-and-alignment.zh.md
+  s_2083e7ed01e3e7::t_e885ce6367e499 1-31
+packages/bundle/mcp-dsh/src/invariant.ts
+  s_2083e7ed01e3e7::t_0693d3cd91cbde 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.2",
+  "base_commit_sha": "d22f1c05c46b02cc6c0cf5496a74c285de2afe61",
+  "prompts": {},
+  "sessions": {
+    "s_2083e7ed01e3e7": {
+      "agent_id": {
+        "tool": "trae",
+        "id": "6a82a804813d54e62f79bf9e",
+        "model": "AI/GLM-5.1"
+      },
+      "human_author": "zhaozhiyue1987 <128685448+zhaozhiyue1987@users.noreply.github.com>",
+      "custom_attributes": {
+        "tool_id": "icube:applyChatSnapshotPatch",
+        "runtime_client": "trae-tob-git-ai",
+        "source_scene": "agent",
+        "client_type": "ide",
+        "tool_type": "builtin",
+        "dedupe_key": "6a82a804813d54e62f79bf9e:6a86cbc66d7ee784f084fbe1:afterEdit:46f7e618",
+        "operation_id": "6a86cbc66d7ee784f084fbe1",
+        "edit_kind": "file_edit",
+        "tool_use_id": "6a86cbc66d7ee784f084fbe1",
+        "external_session_id": "6a82a804813d54e62f79bf9e",
+        "session_id": "6a82a804813d54e62f79bf9e"
+      }
+    }
+  }
+}
