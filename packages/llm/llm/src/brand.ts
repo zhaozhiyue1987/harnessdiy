@@ -51,6 +51,18 @@ export function ProviderRequestId(id: string): ProviderRequestId {
   return id as ProviderRequestId
 }
 
+/** Opaque identity for one live Agent driver execution. */
+export type AgentRunId = Branded<'AgentRunId'>
+
+/**
+ * Brand an Agent execution identifier.
+ * @param id - a freshly generated per-execution identifier.
+ * @returns the same string, branded as an Agent execution id.
+ */
+export function AgentRunId(id: string): AgentRunId {
+  return id as AgentRunId
+}
+
 /** Adapter-owned identifier for one model's selectable reasoning effort. */
 export type ReasoningEffortId = Branded<'ReasoningEffortId'>
 

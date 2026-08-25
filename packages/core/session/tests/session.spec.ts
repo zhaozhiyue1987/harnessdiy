@@ -1088,6 +1088,28 @@ describe('Session', () => {
     ])
     expect(marked.events[0]?.ignorable).toBe(true)
   })
+
+  it('stamps the ignorable marker on a non-surface append', () => {
+    const session = Session.create(SessionId('ignorable-append'))
+    const event = session.append('turn/start', { turn: 1 }, { ignorable: true })
+    expect(event.ignorable).toBe(true)
+    expect(session.events.at(-1)?.ignorable).toBe(true)
+  })
+
+  it('omits ignorable on a non-surface append by default', () => {
+    const session = Session.create(SessionId('no-ignorable-append'))
+    const event = session.append('turn/start', { turn: 1 })
+    expect('ignorable' in event).toBe(false)
+    const stored = session.events.at(-1)
+    expect(stored === undefined ? false : 'ignorable' in stored).toBe(false)
+  })
+
+  it('replays an ignorable non-surface append through the seed validator', () => {
+    const session = Session.create(SessionId('ignorable-roundtrip'))
+    session.append('turn/start', { turn: 1 }, { ignorable: true })
+    const replayed = Session.create(SessionId('ignorable-roundtrip-replay'), structuredClone(session.events))
+    expect(replayed.events[0]?.ignorable).toBe(true)
+  })
 })
 
 

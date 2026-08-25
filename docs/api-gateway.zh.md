@@ -138,14 +138,17 @@ SRC 只解决 Host 源码进程的分发问题。Client 不会从运行中的 Ho
 
 ## 开发模式
 
-Web 开发先使用 `pnpm run build` 准备当前 Host、Client 与 Web 产物，然后在两个终端中分别运行源码 Host 和 Client plugin watcher：
+Web 开发先构建当前 Host、Client 与 Web 产物，然后一起启动源码 Host 和 Client plugin watcher：
 
 ```sh
-pnpm dsh web
-pnpm run dev:web
+pnpm run dev:app
 ```
 
-`dsh` 通过 tsx 启动 Host 源码，所以 Host 可以使用 SRC 回退；`dev:web` 只监听带 `dsh.client` 声明的 Client 插件并重写其 `lib/client.js`，它不会分析 Host decorator，也不会生成 Remote Client DTS。
+通过 `--` 传递 Web 应用参数，例如 `pnpm run dev:app -- --port 3081`。只有当前工作树已经具备匹配的构建产物时，才使用 `pnpm run dev:app -- --skip-build`。
+
+`dev:app` 通过 tsx 启动 Host 源码，所以 Host 可以使用 SRC 回退；它也会运行 `dev:web`，后者只监听带 `dsh.client` 声明的 Client 插件并重写其 `lib/client.js`，它不会分析 Host decorator，也不会生成 Remote Client DTS。
+
+已经具备匹配构建产物时，可用 `pnpm run web:service -- start`、`stop`、`restart` 或 `status` 管理本地 Web 服务。该脚本只终止自己记录的 `pnpm dsh web` 进程树，默认使用 3080；设置 `DSH_WEB_PORT` 可选择其他端口，`DSH_WEB_START_TIMEOUT` 可调整就绪等待秒数。它不执行完整构建，开发时仍使用 `pnpm run dev:app`。
 
 只修改 Remote 方法实现体而不改变约定时，无需重新生成 Typert 文件。新增或删除 decorator、修改导出名、namespace、参数、返回值、lookup、Context 或取消签名时，重新执行有序 lib 构建，让 Host 先生成严格约定，再让 Client 编译并打包新的贡献：
 

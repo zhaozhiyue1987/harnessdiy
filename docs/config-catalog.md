@@ -146,6 +146,20 @@ export interface Config {
    * omission defaults to {@link DEFAULT_MAX_PARALLEL_TOOL_CALLS}.
    */
   maxParallelToolCalls?: number
+  /**
+   * Platform identifier written as the `X-Agent-Platform` gateway
+   * business-correlation header on every outbound LLM and MCP request.
+   * Omission defaults to {@link DEFAULT_AGENT_PLATFORM}. Deployment-wide, so
+   * it is not part of the agent-loop Settings section.
+   */
+  agentPlatform?: string
+  /**
+   * Optional application identifier written as the `X-Agent-Application-Id`
+   * gateway business-correlation header when present. The adapter writes
+   * headers field-by-field, so an unset value is omitted rather than sent
+   * empty.
+   */
+  agentApplicationId?: string
   /** Agents created or resumed at plugin startup. */
   agents: (AgentOptions & {
     /** Stable config label used in logs and as the fresh combined-id prefix. */
@@ -235,6 +249,10 @@ export interface Config {
   agents?: AgentLoopConfig['agents']
   /** Agent-loop concurrency cap; `1` is serial. */
   maxParallelToolCalls?: AgentLoopConfig['maxParallelToolCalls']
+  /** Deployment platform written to traced outbound gateway requests. */
+  agentPlatform?: AgentLoopConfig['agentPlatform']
+  /** Deployment application identifier written to traced outbound gateway requests. */
+  agentApplicationId?: AgentLoopConfig['agentApplicationId']
   /** Whether the system prompt includes the fixed Harness identity (default true). */
   includeHarnessIdentity?: SystemPromptConfig['includeHarnessIdentity']
   /** Whether model history includes dynamic runtime-context snapshots (default true). */
@@ -623,6 +641,72 @@ export type Config = LocalConfig
 Depends on: [`LocalConfig`](#deepseek-aidsh-fs-local)
 
 Source: [`packages/fs/fs-sandbox/src/index.ts:49`](../packages/fs/fs-sandbox/src/index.ts)
+
+<a id="deepseek-aidsh-gateway-trace-console"></a>
+
+## `@deepseek-ai/dsh-gateway-trace-console`
+
+```ts config-catalog
+/** Local, trusted-service provider configuration for Higress Console. */
+export interface GatewayTraceConsoleConfig {
+  /** Base URL of Higress Console, which serves `/v1/observability/*`. */
+  consoleBaseUrl: string
+  /** Credential reference resolving to the Console HTTP Basic username. */
+  basicUsernameRef?: string
+  /** Credential reference resolving to the Console HTTP Basic password. */
+  basicPasswordRef?: string
+  /** Enable automatic background reflection from response-correlated stages. */
+  reflect?: boolean
+  /** Configurable retry policy for transient Console/data-plane lag. */
+  retry?: GatewayTraceRetry
+}
+
+/** Retry policy for eventual consistency between the data plane and Console. */
+export interface GatewayTraceRetry {
+  /** Maximum reverse-query attempts for one response correlation. */
+  maxRetries?: number
+  /** Initial retry delay in milliseconds. */
+  initialDelayMs?: number
+  /** Largest retry delay in milliseconds. */
+  maxDelayMs?: number
+  /** Maximum background reverse queries running at once. */
+  maxConcurrentQueries?: number
+}
+```
+
+Source: [`packages/gateway/gateway-trace-console/src/types.ts:16`](../packages/gateway/gateway-trace-console/src/types.ts)
+
+<a id="deepseek-aidsh-gateway-trace-query"></a>
+
+## `@deepseek-ai/dsh-gateway-trace-query`
+
+```ts config-catalog
+/** Gateway Trace Query service-account configuration. */
+export interface GatewayTraceQueryConfig {
+  /** Gateway Trace Query base URL ending in `/__higress/trace-query/v1`. */
+  traceQueryBaseUrl: string
+  /** Credential reference resolving to the service-account Bearer token. */
+  tokenRef?: string
+  /** Whether response-correlated stages are reflected in the background. */
+  reflect?: boolean
+  /** Retry configuration for background reflection. */
+  retry?: GatewayTraceQueryRetry
+}
+
+/** Retry policy for background visibility lag and service unavailability. */
+export interface GatewayTraceQueryRetry {
+  /** Maximum attempts including the initial query. */
+  maxAttempts?: number
+  /** Initial backoff delay in milliseconds. */
+  initialDelayMs?: number
+  /** Largest backoff delay in milliseconds. */
+  maxDelayMs?: number
+  /** Maximum background queries running at once. */
+  maxConcurrentQueries?: number
+}
+```
+
+Source: [`packages/gateway/gateway-trace-query/src/index.ts:24`](../packages/gateway/gateway-trace-query/src/index.ts)
 
 <a id="deepseek-aidsh-goal"></a>
 
@@ -1301,7 +1385,7 @@ export interface ReconnectConfig {
 }
 ```
 
-Source: [`packages/mcp/mcp-client/src/index.ts:147`](../packages/mcp/mcp-client/src/index.ts)
+Source: [`packages/mcp/mcp-client/src/index.ts:149`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="deepseek-aidsh-message-feedback"></a>
 
@@ -2270,6 +2354,34 @@ export interface Config {
 
 Source: [`packages/core/system-prompt/src/index.ts:186`](../packages/core/system-prompt/src/index.ts)
 
+<a id="deepseek-aidsh-telemetry-otel"></a>
+
+## `@deepseek-ai/dsh-telemetry-otel`
+
+```ts config-catalog
+/** OpenTelemetry trace exporter and Harness identity configuration. */
+export interface Config {
+  /** OTLP/HTTP collector base URL, normally `http://<gateway-host>:4318`. */
+  endpoint: string
+  /** Required deployment identity written as `X-Agent-Application-Id`. */
+  agentApplicationId: string
+  /** Platform identity written as `X-Agent-Platform`. */
+  agentPlatform?: string
+  /** OpenTelemetry resource `service.name`. */
+  serviceName?: string
+  /** Extra OTLP exporter options, excluding the resolved traces URL. */
+  exporter?: Omit<OTLPExporterNodeConfigBase, 'url'>
+  /** Extra batch processor options, excluding the exporter constructed here. */
+  processor?: Omit<BatchSpanProcessorOptions, 'exporter'>
+  /** Upper bound for disposal-time exporter flush. */
+  shutdownTimeoutMillis?: number
+}
+```
+
+Depends on: `BatchSpanProcessorOptions` (`@opentelemetry/sdk-trace`) · `OTLPExporterNodeConfigBase` (`@opentelemetry/otlp-exporter-base`)
+
+Source: [`packages/telemetry/telemetry-otel/src/index.ts:32`](../packages/telemetry/telemetry-otel/src/index.ts)
+
 <a id="deepseek-aidsh-terminal-bash"></a>
 
 ## `@deepseek-ai/dsh-terminal-bash`
@@ -3128,6 +3240,7 @@ Abstract service classes — a deployment loads a concrete implementation packag
 - `@deepseek-ai/dsh-compaction` — abstract `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
 - `@deepseek-ai/dsh-credentials` — abstract `CredentialProvider` ([`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts))
 - `@deepseek-ai/dsh-fs` — abstract `FileSystem` ([`packages/fs/fs/src/index.ts`](../packages/fs/fs/src/index.ts))
+- `@deepseek-ai/dsh-gateway-trace` — abstract `GatewayTraceService` ([`packages/gateway/gateway-trace/src/index.ts`](../packages/gateway/gateway-trace/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker` — abstract `DirectoryPicker` ([`packages/host/directory-picker/src/index.ts`](../packages/host/directory-picker/src/index.ts))
 - `@deepseek-ai/dsh-jobs` — abstract `JobRegistry` ([`packages/jobs/jobs/src/index.ts`](../packages/jobs/jobs/src/index.ts))
 - `@deepseek-ai/dsh-sandbox` — abstract `SandboxProvider` ([`packages/sandbox/sandbox/src/index.ts`](../packages/sandbox/sandbox/src/index.ts))
@@ -3137,6 +3250,7 @@ Abstract service classes — a deployment loads a concrete implementation packag
 - `@deepseek-ai/dsh-shell` — abstract `ShellExecutor` ([`packages/shell/shell/src/index.ts`](../packages/shell/shell/src/index.ts))
 - `@deepseek-ai/dsh-spill` — abstract `SpillStore` ([`packages/spill/spill/src/index.ts`](../packages/spill/spill/src/index.ts))
 - `@deepseek-ai/dsh-subprocess` — abstract `SubprocessRuntime` ([`packages/subprocess/subprocess/src/index.ts`](../packages/subprocess/subprocess/src/index.ts))
+- `@deepseek-ai/dsh-telemetry` — abstract `TraceTelemetry` ([`packages/telemetry/telemetry/src/index.ts`](../packages/telemetry/telemetry/src/index.ts))
 - `@deepseek-ai/dsh-workflow` — abstract `WorkflowEngine` ([`packages/workflow/workflow/src/index.ts`](../packages/workflow/workflow/src/index.ts))
 
 ## Library packages (no plugin entry)
@@ -3158,11 +3272,13 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-client-web` ([`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts))
 - `@deepseek-ai/dsh-client-web-react` ([`packages/client/web-react/src/index.ts`](../packages/client/web-react/src/index.ts))
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
+- `@deepseek-ai/dsh-higress-trace` ([`packages/bundle/higress-trace/src/index.ts`](../packages/bundle/higress-trace/src/index.ts))
 - `@deepseek-ai/dsh-home-paths` ([`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts))
 - `@deepseek-ai/dsh-hook-protocol` ([`packages/hooks/hook-protocol/src/index.ts`](../packages/hooks/hook-protocol/src/index.ts))
 - `@deepseek-ai/dsh-launch-environment` ([`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts))
 - `@deepseek-ai/dsh-llm-mock-server` ([`packages/test-support/llm-mock-server/src/index.ts`](../packages/test-support/llm-mock-server/src/index.ts))
 - `@deepseek-ai/dsh-loader-smoke` ([`packages/test-support/loader-smoke/src/index.ts`](../packages/test-support/loader-smoke/src/index.ts))
+- `@deepseek-ai/dsh-mcp` ([`packages/bundle/mcp-dsh/src/index.ts`](../packages/bundle/mcp-dsh/src/index.ts))
 - `@deepseek-ai/dsh-native-command` ([`packages/util/native-command/src/index.ts`](../packages/util/native-command/src/index.ts))
 - `@deepseek-ai/dsh-output-retention` ([`packages/util/output-retention/src/index.ts`](../packages/util/output-retention/src/index.ts))
 - `@deepseek-ai/dsh-sandbox-windows-acl` ([`packages/sandbox/sandbox-windows-acl/src/index.ts`](../packages/sandbox/sandbox-windows-acl/src/index.ts))

@@ -118,6 +118,8 @@ profile 的 `models` 列表是*替换*该路由已安装 catalog，而不是扩�
 
 适配器强制 pi-ai SDK `maxRetries` 为零，因此一次 `stream()` 调用只会发起一次提供方请求。已移除 profile 字段 `maxRetries` 和 `maxRetryDelayMs` 会使加载失败，而不是静默倍增或隐藏单独组合的 agent（智能体）级重试预算。空闲超时会 abort SDK 的稳定请求信号，并以 `TIMEOUT` 呈现；较早的调用方 abort 仍为 `ABORTED`。
 
+`GenerateOptions.requestTrace` 存在时，适配器会在 profile headers 之后写入其 W3C `traceparent` 和可选 `X-Agent-*` 字段，使部署不能替换 Harness 关联。pi-ai 通用的 `onResponse` 回调会在内容到达前解析有效的响应 `traceparent` 或 `x-request-id`，并发出一项不对模型可见的 `trace-meta` 流分片。缺失或无效响应头不产生关联；绝不以出站 trace id 替代。
+
 ## 端点询问
 
 插件提供 `ctx.llm.registerModelDiscovery('llm-pi-ai', …)`，用来回答「这个提供方能服务哪些模型？」——针对配置界面正在编辑或起草的路由。它刻意**不是** catalog 刷新：什么都不存储，回复是界面供用户采纳的候选。`settings.yaml` 始终是唯一决定路由服务什么的东西。

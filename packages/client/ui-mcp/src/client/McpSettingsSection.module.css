@@ -56,6 +56,37 @@
   text-overflow: ellipsis;
 }
 
+.toolsCount {
+  color: var(--dsh-color-accent, #4c8bf5);
+  font-weight: 500;
+}
+
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.secondary {
+  border: 0;
+  background: transparent;
+  color: var(--dsh-color-text-secondary, #8a8f98);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.secondary:hover {
+  color: var(--dsh-color-accent, #4c8bf5);
+}
+
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .danger {
   border: 0;
   background: transparent;

@@ -153,36 +153,39 @@ type ContextFormed =
 
 <a id="streamchunk--the-raw-protocol"></a>
 
-## `TraceMeta` 和 `RequestTrace` — 网关 Trace 关联
+## `GatewayResponseCorrelation` 和 `RequestTrace` — 网关 Trace 关联
 
-当模型端点位于生成 W3C Trace Context 的网关（如 Higress）之后时，适配器在外出请求中注入 `traceparent` 和 `X-Agent-*` 头，然后从响应中读取 `traceparent` 和 `x-request-id`。捕获的关联 ID 作为 `trace-meta` 块流经流，最终附着在 `assistant/message` 会话事件上。
+当模型端点位于生成 W3C Trace Context 的网关（如 Higress）之后时，适配器在外出请求中注入 `traceparent` 和 `X-Agent-*` 头，然后从响应中读取 `traceparent` 和 `x-request-id`。捕获的关联 ID 作为 `trace-meta` 块流经流，最终附着在 `assistant/message` 会话事件上。返回的 traceparent 命名为 `responseTraceparent`：它是反查证据，绝不作为后续出站请求的上下文。
 
 ```ts type-equiv
 /**
- * Gateway trace correlation metadata captured from the HTTP response headers.
- * The adapter reads `traceparent` and `x-request-id` from the provider or
- * gateway response and emits a `trace-meta` chunk so the agent loop can
- * attach it to the session event.
+ * Gateway response correlation captured from HTTP headers. `responseTraceparent` and
+ * `x-request-id` are independent: either may be absent without discarding the
+ * other. The receive time is local to the observation.
  */
-interface TraceMeta {
-  /** W3C trace-id from the `traceparent` response header. */
-  traceId: string
-  /** Gateway request ID from the `x-request-id` response header. */
-  requestId: string
+interface GatewayResponseCorrelation {
+  /** Full valid W3C `traceparent` returned by the gateway, when supplied. */
+  responseTraceparent?: string
+  /** W3C trace-id parsed from `responseTraceparent`, when supplied. */
+  traceId?: GatewayTraceId
+  /** Gateway request ID parsed from `x-request-id`, when supplied. */
+  requestId?: GatewayRequestId
+  /** ISO-8601 time when the response headers were received. */
+  receivedAt: string
 }
 ```
 
 ```ts type-equiv
 /**
  * Gateway trace context to inject into the outgoing request. The agent loop
- * populates this from session identity before each model request; the adapter
+ * populates this from the active Agent execution before each model request; the adapter
  * writes the corresponding HTTP headers.
  */
 interface RequestTrace {
   /** W3C Trace Context `traceparent` header value (`00-<traceId>-<spanId>-01`). */
   traceparent: string
   /** Business correlation ID for the agent run (written as `X-Agent-Run-Id`). */
-  agentRunId?: string
+  agentRunId?: AgentRunId
   /** Platform identifier (written as `X-Agent-Platform`). */
   agentPlatform?: string
   /** Application identifier (written as `X-Agent-Application-Id`). */
@@ -212,7 +215,7 @@ type StreamChunk =
   | { type: 'tool-call-delta'; index: number; id: CallId; name?: string; argumentsDelta: string }
   | { type: 'block-end'; index: number; block: ContentBlock }
   | { type: 'usage'; usage: TokenUsage }
-  | { type: 'trace-meta'; traceMeta: TraceMeta }
+  | { type: 'trace-meta'; traceMeta: GatewayResponseCorrelation }
   | {
     type: 'finish'
     reason: FinishReason
@@ -341,7 +344,7 @@ declare class BlockAssembler {
   /** Usage from the `usage` chunk; undefined until one arrives. */
   get usage(): TokenUsage | undefined;
   /** Gateway trace correlation from the `trace-meta` chunk; undefined until one arrives. */
-  get traceMeta(): TraceMeta | undefined;
+  get traceMeta(): GatewayResponseCorrelation | undefined;
   /** Finish reason from the `finish` chunk; `{kind: 'stop'}` when the stream ended without one. */
   get finish(): FinishReason;
   /** Adapter-private replay state from the terminal finish chunk, if any. */
@@ -890,7 +893,7 @@ async prepareCall(config: LlmCallConfig, signal?: AbortSignal): Promise<Prepared
 stream(options: GenerateOptions): AsyncIterable<StreamChunk>
 ```
 
-Source: [`packages/llm/llm/src/index.ts:284`](../../packages/llm/llm/src/index.ts)
+Source: [`packages/llm/llm/src/index.ts:286`](../../packages/llm/llm/src/index.ts)
 
 <a id="llm-events"></a>
 
@@ -939,5 +942,5 @@ Waterfall around every streaming model call (retry, replay, routing). Bound to t
 'llm/stream'(this: LlmRuntime, options: GenerateOptions, next: () => AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk>
 ```
 
-Source: [`packages/llm/llm/src/index.ts:64`](../../packages/llm/llm/src/index.ts)
+Source: [`packages/llm/llm/src/index.ts:66`](../../packages/llm/llm/src/index.ts)
 <!-- END GENERATED cordis-surface -->

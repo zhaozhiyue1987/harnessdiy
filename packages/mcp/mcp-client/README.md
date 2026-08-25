@@ -61,6 +61,8 @@ The model sees `mcp__github__create_issue`, `mcp__web__search`, … — the same
 
 Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`) and the public name `mcp__<serverName>__<rawName>` registered on `ctx.tools`. Public names are normalized to the DeepSeek function-name contract (64 chars, `[A-Za-z0-9_-]`); when replacement or truncation changes the name, a deterministic 12-hex-char hash of `(serverName, rawName)` is appended so distinct tools never collapse into one name. Names are pure functions of `(serverName, rawName)` — connection order, re-syncs, and other servers never rename a tool.
 
+For HTTP transports running under `TraceTelemetry`, each MCP HTTP attempt creates an `mcp.client` span below the active `mcp.tools.call` span. Harness overwrites the correlation headers with that local client span and records returned request and trace identifiers only for reverse query; an MCP retry never falls back to an untraced request.
+
 - Two servers publishing the same raw name (e.g. `search`) coexist under their namespaces.
 - A duplicate `serverName` across live instances fails the later plugin instance at load.
 - A server listing the same tool name twice is rejected as an invalid tool list.
@@ -117,6 +119,6 @@ Append-only; newly visible content follows the reusable request prefix and does 
 
 - **Tools are the only bridged MCP capability** — Resources and Prompts have no harness consumer and are deferred.
 - **Startup timeout is inherited from the MCP SDK** — DSH does not yet expose a connection/discovery timeout. Each initialize or paginated `tools/list` request uses the SDK's 60-second default, so an unresponsive server or cursor chain can delay both activation and teardown while the initial synchronization settles.
-- **Reconnect triggers on transport close** — a crashed stdio child fires it; Streamable HTTP failures surface per request and through the SDK transport's own SSE-stream recovery, so an unreachable HTTP server is retried per call rather than respawned by the supervisor.
+- **Reconnect triggers on transport close** — a crashed stdio child fires it; Streamable HTTP failures otherwise surface per request and through the SDK transport's own SSE-stream recovery, so an unreachable HTTP server is retried per call rather than respawned by the supervisor. One exception: a `tools/call` failure that names a lapsed remote session (`SessionExpired`, `MCP-Server-Session-Not-Valid`, …) tears the generation down, so reconnection renegotiates a fresh session id instead of replaying the dead one.
 - **Native non-text rendering is lossy** — image, audio, and resource payloads become placeholders in model context even though the execution-local canonical value preserves their JSON blocks. Richer Native multimedia projection is deferred.
 - **Unsupported MCP output schemas are not enforced** — `structuredContent` falls back to `JsonValue` when the advertised schema uses vocabulary outside the harness subset.

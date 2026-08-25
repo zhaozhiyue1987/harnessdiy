@@ -15,7 +15,7 @@ Browser-half [client plugin](../../client/AGENTS.md); add it to a web bundle and
 | `settings.section` | `mcp` | 40 |
 | `conversation.input.dock` | `mcp` | 30 |
 
-The settings section hosts the catalog (list/upsert/delete), and the conversation dock binds and unbinds the active session on the catalog servers.
+The settings section hosts the catalog (list/upsert/delete), and the conversation dock binds and unbinds the active session on the catalog servers; each bound-server chip expands to the endpoint detail and the live tool inventory.
 
 ## Services consumed
 
@@ -40,3 +40,4 @@ The UI appends no model context itself; a bind only enters the session request p
 
 - **Browser-only** — this plugin runs in the web GUI half; the ACP and headless surfaces manage servers through the `mcpManager` RPC contract instead.
 - **The dock renders the host's live inventory only** — a disconnected or unconnected server is shown from the persisted catalog, but its session tool state reflects whatever `bound()` reports.
+- **Tool-count refresh depends on the MCP endpoint** — the settings section opens a connection and calls `tools/list` for each refresh; transport or business failures appear through the operation notice and never overwrite the prior tool count.

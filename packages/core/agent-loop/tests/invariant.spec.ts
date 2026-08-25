@@ -3,7 +3,15 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import InvariantRegistry from '@deepseek-ai/dsh-invariants'
 import * as AgentLoopInvariant from '@deepseek-ai/dsh-agent-loop/invariant'
-import { createUserMessage, markAgentLoopRequest, type GenerateOptions  } from '@deepseek-ai/dsh-llm'
+import { AgentRunId, createUserMessage, markAgentLoopRequest, type GenerateOptions, type RequestTrace } from '@deepseek-ai/dsh-llm'
+
+/** Valid W3C `traceparent` for positive-path invariant tests. */
+const VALID_TRACEPARENT = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`
+
+/** A `RequestTrace` that satisfies the agent-loop invariant's three trace checks. */
+function validTrace(): RequestTrace {
+  return { traceparent: VALID_TRACEPARENT, agentRunId: AgentRunId('agent-run') }
+}
 
 async function setup(): Promise<Context> {
   const ctx = new Context()
@@ -38,7 +46,7 @@ async function requestSetup() {
 describe('request-reconstruction invariant', () => {
   it('accepts a frozen request equal to the boundary derivation and folded header', async () => {
     const { ctx, session, boundary } = await requestSetup()
-    const options = loopRequest({ model: 'm', messages: Object.freeze(boundary), sessionId: session.id })
+    const options = loopRequest({ model: 'm', messages: Object.freeze(boundary), sessionId: session.id, requestTrace: validTrace() })
     expect(() => { dispatch(ctx, options) }).not.toThrow()
   })
 
@@ -51,6 +59,7 @@ describe('request-reconstruction invariant', () => {
       model: 'm',
       messages: Object.freeze(session.deriveMessages()),
       sessionId: session.id,
+      requestTrace: validTrace(),
     })
     expect(() => { dispatch(ctx, options) }).not.toThrow()
   })
@@ -58,7 +67,7 @@ describe('request-reconstruction invariant', () => {
   it('requires the messages to equal the boundary derivation exactly (no unlogged prefix)', async () => {
     const { ctx, session, boundary } = await requestSetup()
     const extra = { role: 'user' as const, content: [{ type: 'text' as const, text: '<system-reminder>catalog</system-reminder>' }] }
-    expect(() => { dispatch(ctx, loopRequest({ model: 'm', messages: Object.freeze([...boundary]), sessionId: session.id })) })
+    expect(() => { dispatch(ctx, loopRequest({ model: 'm', messages: Object.freeze([...boundary]), sessionId: session.id, requestTrace: validTrace() })) })
       .not.toThrow()
     expect(() => { dispatch(ctx, loopRequest({ model: 'm', messages: Object.freeze([extra, ...boundary]), sessionId: session.id })) })
       .toThrow(/diverges from the dispatch-time durable derivation/)
@@ -138,5 +147,33 @@ describe('request-reconstruction invariant', () => {
       sessionId: session.id,
     })
     expect(() => { dispatch(ctx, divergent) }).toThrow(/diverges from the dispatch-time durable derivation/)
+  })
+
+  it('rejects a loop request missing requestTrace', async () => {
+    const { ctx, session, boundary } = await requestSetup()
+    const options = loopRequest({ model: 'm', messages: Object.freeze(boundary), sessionId: session.id })
+    expect(() => { dispatch(ctx, options) }).toThrow(/must carry requestTrace/)
+  })
+
+  it('rejects a loop request with a malformed traceparent', async () => {
+    const { ctx, session, boundary } = await requestSetup()
+    const options = loopRequest({
+      model: 'm',
+      messages: Object.freeze(boundary),
+      sessionId: session.id,
+      requestTrace: { traceparent: 'not-w3c', agentRunId: AgentRunId('agent-run') },
+    })
+    expect(() => { dispatch(ctx, options) }).toThrow(/W3C-formatted traceparent/)
+  })
+
+  it('rejects a loop request missing the agentRunId', async () => {
+    const { ctx, session, boundary } = await requestSetup()
+    const options = loopRequest({
+      model: 'm',
+      messages: Object.freeze(boundary),
+      sessionId: session.id,
+      requestTrace: { traceparent: VALID_TRACEPARENT },
+    })
+    expect(() => { dispatch(ctx, options) }).toThrow(/agentRunId/)
   })
 })

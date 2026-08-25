@@ -14,18 +14,21 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomBytes } from 'node:crypto'
-import type { TraceMeta } from './types.ts'
+import { GatewayRequestId, GatewayTraceId, type GatewayResponseCorrelation } from './types.ts'
+import type { AgentRunId } from './brand.ts'
 
 /** The active trace identity propagated through the call chain. */
 export interface ActiveTraceContext {
   /** W3C `traceparent` header value for the current outbound request. */
   traceparent: string
   /** Business correlation ID for the agent run (written as `X-Agent-Run-Id`). */
-  agentRunId?: string
+  agentRunId?: AgentRunId
   /** Platform identifier (written as `X-Agent-Platform`). */
   agentPlatform?: string
   /** Application identifier (written as `X-Agent-Application-Id`). */
   agentApplicationId?: string
+  /** Per-operation response observations owned by a nested async scope. */
+  responseCorrelations?: GatewayResponseCorrelation[]
 }
 
 /**
@@ -38,6 +41,9 @@ export const activeTraceContext = new AsyncLocalStorage<ActiveTraceContext>()
 /**
  * Run `fn` with the given trace context active, so downstream callers (MCP
  * transports, HTTP clients) can read it via {@link activeTraceContext}.
+ * @param trace - trace identity available to downstream work.
+ * @param fn - operation to run in that context.
+ * @returns the operation's result.
  */
 export function withTraceContext<R>(trace: ActiveTraceContext, fn: () => R): R {
   return activeTraceContext.run(trace, fn)
@@ -46,6 +52,7 @@ export function withTraceContext<R>(trace: ActiveTraceContext, fn: () => R): R {
 /**
  * Read the active trace context, if one has been set. Returns `undefined`
  * outside a `withTraceContext` scope.
+ * @returns the active trace identity, if any.
  */
 export function getTraceContext(): ActiveTraceContext | undefined {
   return activeTraceContext.getStore()
@@ -54,8 +61,9 @@ export function getTraceContext(): ActiveTraceContext | undefined {
 /**
  * Generate a W3C trace-id (32 lowercase hex digits, 16 random bytes).
  *
- * One trace-id is created per agent turn and reused for every LLM and MCP
- * request within that turn so the gateway groups them into a single trace.
+ * The Agent loop creates one trace id per driver execution and reuses it for
+ * every fallback LLM and MCP request in that execution.
+ * @returns a lowercase hexadecimal trace id.
  */
 export function generateTraceId(): string {
   return randomBytes(16).toString('hex')
@@ -66,6 +74,7 @@ export function generateTraceId(): string {
  *
  * Each outbound request (LLM call, MCP tool call) receives a unique span-id
  * so individual calls are distinguishable within the shared trace.
+ * @returns a lowercase hexadecimal span id.
  */
 export function generateSpanId(): string {
   return randomBytes(8).toString('hex')
@@ -78,6 +87,7 @@ export function generateSpanId(): string {
  *
  * @param traceId - 32-hex-digit trace-id (shared across one agent turn).
  * @param spanId  - 16-hex-digit span-id (unique per outbound request).
+ * @returns a W3C `traceparent` header value.
  */
 export function buildTraceparent(traceId: string, spanId: string): string {
   return `00-${traceId}-${spanId}-01`
@@ -87,6 +97,7 @@ export function buildTraceparent(traceId: string, spanId: string): string {
  * Generate a W3C Trace Context `traceparent` header value with a fresh
  * trace-id and span-id. Convenience wrapper for callers that do not need
  * cross-step trace continuity.
+ * @returns a W3C `traceparent` header value.
  */
 export function generateTraceparent(): string {
   return buildTraceparent(generateTraceId(), generateSpanId())
@@ -100,6 +111,7 @@ export function generateTraceparent(): string {
  * Produced headers: `traceparent`, `X-Agent-Run-Id`, `X-Agent-Platform`,
  * `X-Agent-Application-Id` (each omitted when the corresponding field is
  * absent).
+ * @returns headers for the active context, or an empty record.
  */
 export function traceContextHeaders(): Record<string, string> {
   const ctx = getTraceContext()
@@ -111,45 +123,48 @@ export function traceContextHeaders(): Record<string, string> {
   return headers
 }
 
-// ---- Response-side trace correlation ----
-
 /**
- * Store for the most recent gateway trace correlation metadata captured from
- * an HTTP response. MCP tool calls use this to pick up `traceparent` and
- * `x-request-id` from the gateway response when the MCP SDK does not expose
- * raw response headers.
+ * Run one operation with an isolated response-correlation collector. Nested
+ * collectors preserve outbound headers but prevent parallel tool calls from
+ * observing one another's gateway responses.
  *
- * This is a module-level variable (not ALS) because the MCP SDK's `client.request()`
- * call is synchronous on the outside — the response arrives after the `await`
- * resolves, and reading from ALS at that point would still be within the same
- * async context where the trace context was set. A simple variable avoids
- * unnecessary ALS nesting.
+ * @param fn - operation that may issue gateway HTTP requests.
+ * @returns its result and every response correlation captured during it.
  */
-let lastResponseTraceMeta: TraceMeta | undefined
-
-/**
- * Extract `traceparent` and `x-request-id` from an HTTP response and store
- * them as the last captured trace meta. Called by the trace-aware fetch
- * wrapper after each MCP HTTP response.
- */
-export function captureResponseTraceMeta(headers: Headers): void {
-  const traceparent = headers.get('traceparent')
-  if (traceparent === null) return
-  const parts = traceparent.split('-')
-  const traceId = parts[1]
-  if (traceId === undefined || traceId.length === 0) return
-  const requestId = headers.get('x-request-id')
-  lastResponseTraceMeta = { traceId, ...requestId !== null ? { requestId } : {} }
+export async function collectGatewayResponseCorrelations<R>(fn: () => Promise<R>): Promise<{
+  result: R
+  correlations: GatewayResponseCorrelation[]
+}> {
+  const trace = getTraceContext()
+  if (trace === undefined) return { result: await fn(), correlations: [] }
+  const correlations: GatewayResponseCorrelation[] = []
+  const result = await activeTraceContext.run({ ...trace, responseCorrelations: correlations }, fn)
+  return { result, correlations }
 }
 
 /**
- * Read and clear the last captured response trace meta. The MCP tool bridge
- * calls this after each `tools/call` to attach trace correlation to the
- * `tool/result` session event. Returns `undefined` when the last MCP response
- * did not carry gateway trace headers.
+ * Extract gateway correlation from response headers and append it to the active
+ * operation collector. A request id remains useful when traceparent is absent
+ * or invalid, so neither header gates the other. The parsed value is returned
+ * for adapters that retain their own response correlation.
+ * @param headers - response headers received from the gateway.
+ * @returns the parsed correlation, or undefined when neither supported header is present.
  */
-export function consumeResponseTraceMeta(): TraceMeta | undefined {
-  const meta = lastResponseTraceMeta
-  lastResponseTraceMeta = undefined
-  return meta
+export function captureGatewayResponseCorrelation(headers: Headers): GatewayResponseCorrelation | undefined {
+  const traceparent = headers.get('traceparent')
+  const traceMatch = traceparent === null
+    ? undefined
+    : /^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/i.exec(traceparent) ?? undefined
+  const requestId = headers.get('x-request-id')
+  const responseTraceparent = traceMatch === undefined || traceparent === null ? undefined : traceparent
+  const traceId = traceMatch?.[1]
+  const correlation: GatewayResponseCorrelation = {
+    receivedAt: new Date().toISOString(),
+    ...responseTraceparent === undefined ? {} : { responseTraceparent },
+    ...traceId === undefined ? {} : { traceId: GatewayTraceId(traceId.toLowerCase()) },
+    ...requestId === null || requestId.length === 0 ? {} : { requestId: GatewayRequestId(requestId) },
+  }
+  if (correlation.traceId === undefined && correlation.requestId === undefined) return undefined
+  getTraceContext()?.responseCorrelations?.push(correlation)
+  return correlation
 }

@@ -32,7 +32,7 @@ The [MCP client](2026-07-07-mcp-client-plugin.md) connected once at plugin load.
 
 **Unregister tools immediately on disconnect, re-register on recovery.** Rejected: a transient outage would flap the model-visible tool list (two schema-prefix invalidations per crash) for no information gain; failing calls already signal the outage, and the swap on recovery is atomic per generation. Tools are unregistered at final failure so a permanently dead server does not leak permanently broken tools.
 
-**Route Streamable HTTP request failures into the supervisor.** Rejected for now: the HTTP transport already reconnects its SSE stream with its own backoff, per-request errors do not imply a dead server, and there is no child process the harness could respawn. Transport close stays the single trigger.
+**Route Streamable HTTP request failures into the supervisor.** Rejected for now: the HTTP transport already reconnects its SSE stream with its own backoff, per-request errors do not imply a dead server, and there is no child process the harness could respawn. Transport close stays the single trigger. The lapsed-session exception — a `tools/call` failure naming an expired or invalid remote session tears the generation down so reconnection negotiates a fresh session — is a later, narrower decision ([bug-fix note](../bug-fix/2026-08-18-mcp-session-expiry-auto-recovery.md)).
 
 **Restart through Loader/HMR machinery instead of an in-plugin supervisor.** Rejected: the Loader owns config-driven recomposition, not runtime health. A plugin restarting itself through the Loader would conflate config generations with connection generations and lose the per-outage budget.
 

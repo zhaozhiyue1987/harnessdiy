@@ -16,8 +16,9 @@ import type {
   RequestErrorAction,
 } from '@deepseek-ai/dsh-agent'
 import { Inbox, agentEvents, assembleContextFor } from '@deepseek-ai/dsh-agent'
-import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall } from '@deepseek-ai/dsh-llm'
+import type { GenerateOptions, LlmCallConfig, Message, PreparedLlmCall, RequestTrace } from '@deepseek-ai/dsh-llm'
 import {
+  AgentRunId,
   BlockAssembler,
   LlmError,
   buildTraceparent,
@@ -29,6 +30,7 @@ import {
   markAgentLoopRequest,
   withTraceContext,
 } from '@deepseek-ai/dsh-llm'
+import { randomUUID } from 'node:crypto'
 import type { Scope } from '@deepseek-ai/dsh-scope'
 import { createScope } from '@deepseek-ai/dsh-scope'
 import type { EpochHeader, RequestContext, Session, SessionId, TurnEndReason, UserMessage } from '@deepseek-ai/dsh-session'
@@ -36,6 +38,7 @@ import { canonicalHeader, headerEquals } from '@deepseek-ai/dsh-session'
 import { joinContextSections, renderContextSections, renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import type { PromptAssembly } from '@deepseek-ai/dsh-system-prompt'
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-telemetry'
 import { RuntimeContextProjection } from './runtime-context.ts'
 import { executeToolCalls } from './tool-calls.ts'
 
@@ -47,7 +50,7 @@ type Phase =
     lastTurn: number
     wakeRequested: boolean
   }
-  | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean; traceId: string }
+  | { kind: 'running'; abort: AbortController; turn: number; step: number; wakeRequested: boolean; traceId: string; agentRunId: AgentRunId }
 
 type StepEndReason = Extract<TurnEndReason, { kind: 'completed' | 'max-tokens' }>
 
@@ -193,6 +196,7 @@ export class ReactLoopAgent implements Agent {
       step: 0,
       wakeRequested: false,
       traceId: generateTraceId(),
+      agentRunId: AgentRunId(randomUUID()),
     })
     this.loopCtx.agents.withInitiator(this, () => this.kick()).then(driver.resolve, driver.reject)
   }
@@ -214,7 +218,25 @@ export class ReactLoopAgent implements Agent {
 
   private async kick(): Promise<void> {
     try {
-      while (await this.turn()) {}
+      const phase = this.phase
+      /* v8 ignore next -- wakeDriver reserves the running phase before invoking kick */
+      if (phase.kind !== 'running') throw new Error(`agent "${this.id}": driver without run reservation`)
+      const run = async (): Promise<void> => { while (await this.turn()) {} }
+      const telemetry = this.loopCtx.get('traceTelemetry')
+      if (telemetry === undefined) await run()
+      else {
+        const identity = telemetry.identity()
+        await telemetry.withinSpan({
+          name: 'agent.run',
+          root: true,
+          attributes: {
+            'agent.id': this.id,
+            'agent.run_id': phase.agentRunId,
+            'agent.platform': identity.agentPlatform,
+            'agent.application_id': identity.agentApplicationId,
+          },
+        }, run)
+      }
     } catch (_error) {
       // Reported failures and cancellation are contained at the driver boundary.
     } finally {
@@ -337,26 +359,48 @@ export class ReactLoopAgent implements Agent {
   private async step(assembly: PromptAssembly): Promise<StepEndReason | null> {
     /* v8 ignore next -- private callers establish the running phase before executing a step */
     if (this.phase.kind !== 'running') throw new Error(`agent "${this.id}": step outside running phase`)
-    const { turn, step, abort: { signal }, traceId } = this.phase
+    const { turn, step, abort: { signal }, traceId, agentRunId } = this.phase
     signal.throwIfAborted()
     const system = renderPrompt(assembly)
+    const { agentPlatform, agentApplicationId } = this.loopCtx.agentLoop.config
 
     while (true) {
-      const traceparent = buildTraceparent(traceId, generateSpanId())
-      const traceCtx = { traceparent }
-      const { request, preparedCall } = await this.buildRequest(
-        turn, step, assembly.tools, system, this.session.deriveMessages(), signal, traceparent,
-      )
-      const assembler = new BlockAssembler()
-      const chunkSeqs: number[] = []
-      const stream = preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request)
-      signal.throwIfAborted()
-      for await (const chunk of stream) {
+      const modelCall = async (): Promise<{
+        traceCtx: RequestTrace
+        request: GenerateOptions
+        preparedCall: PreparedLlmCall | undefined
+        assembler: BlockAssembler
+        chunkSeqs: number[]
+      }> => {
+        const active = this.loopCtx.get('traceTelemetry')?.outbound(agentRunId)
+        const traceCtx: RequestTrace = active ?? {
+          traceparent: buildTraceparent(traceId, generateSpanId()),
+          agentRunId,
+          agentPlatform,
+          ...agentApplicationId !== undefined ? { agentApplicationId } : {},
+        }
+        const { request, preparedCall } = await this.buildRequest(
+          turn, step, assembly.tools, system, this.session.deriveMessages(), signal, traceCtx,
+        )
+        const assembler = new BlockAssembler()
+        const chunkSeqs: number[] = []
+        const stream = preparedCall?.stream(request) ?? this.loopCtx.llm.stream(request)
         signal.throwIfAborted()
-        chunkSeqs.push(this.session.append('assistant/chunk', { turn, step, chunk }).seq)
-        assembler.push(chunk)
+        for await (const chunk of stream) {
+          signal.throwIfAborted()
+          chunkSeqs.push(this.session.append('assistant/chunk', { turn, step, chunk }).seq)
+          assembler.push(chunk)
+        }
+        signal.throwIfAborted()
+        return { traceCtx, request, preparedCall, assembler, chunkSeqs }
       }
-      signal.throwIfAborted()
+      const telemetry = this.loopCtx.get('traceTelemetry')
+      const { traceCtx, request, preparedCall, assembler, chunkSeqs } = telemetry === undefined
+        ? await modelCall()
+        : await telemetry.withinSpan(
+          { name: 'gen_ai.chat', attributes: { 'gen_ai.operation.name': 'chat' } },
+          () => telemetry.withinSpan({ name: 'llm.client' }, modelCall),
+        )
       const finish = assembler.finish
       if (finish.kind === 'error' || finish.kind === 'aborted') {
         const action = await this.dispatch.waterfall(
@@ -400,11 +444,9 @@ export class ReactLoopAgent implements Agent {
 
       const toolCalls = message.content.filter(block => block.type === 'tool-call')
       if (toolCalls.length === 0) return { kind: 'completed' }
-      // Run tool calls inside the trace context so MCP transports can read
-      // the active traceparent and inject W3C Trace Context headers into
-      // their HTTP requests. Each step shares the same span-id as its LLM
-      // request because the gateway treats them as children of the same
-      // gateway span.
+      // Response correlation identifies a completed gateway request for reverse
+      // query only. Tool requests inherit the local step context; a gateway
+      // response span is never a Harness parent context.
       const { concluded } = await withTraceContext(traceCtx, () =>
         executeToolCalls(
           this.loopCtx, turn, step, toolCalls, signal,
@@ -426,7 +468,7 @@ export class ReactLoopAgent implements Agent {
     system: string,
     boundaryMessages: Message[],
     signal: AbortSignal,
-    traceparent: string,
+    requestTrace: RequestTrace,
   ): Promise<{ request: GenerateOptions; preparedCall?: PreparedLlmCall }> {
     const { session } = this
 
@@ -505,7 +547,7 @@ export class ReactLoopAgent implements Agent {
       ...header.system !== undefined ? { system: header.system } : {},
       ...header.tools !== undefined ? { tools: header.tools } : {},
       sessionId: this.session.id,
-      requestTrace: { traceparent },
+      requestTrace,
       signal,
     }))
     return { request, ...preparedCall === undefined ? {} : { preparedCall } }

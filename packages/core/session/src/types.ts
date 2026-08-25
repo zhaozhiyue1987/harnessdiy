@@ -9,7 +9,7 @@ import type {
   TokenUsage,
   ToolResultMessage,
   ToolSchema,
-  TraceMeta,
+  GatewayResponseCorrelation,
   UserMessage,
 } from '@deepseek-ai/dsh-llm'
 import type { JsonValue } from './json.ts'
@@ -271,7 +271,7 @@ export interface SessionEventMap {
    * the model output and its accounting travel together (there is no separate
    * usage record). `usage` is absent when the adapter reported none.
    */
-  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; traceMeta?: TraceMeta }
+  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; traceMeta?: GatewayResponseCorrelation }
   /**
    * The model requested one tool invocation: `name` with the raw `arguments`
    * JSON string exactly as the model produced it (unparsed). `callId` pairs the
@@ -295,8 +295,8 @@ export interface SessionEventMap {
     message: ToolResultMessage
     error?: { name: string; code: string }
     meta?: JsonValue
-    /** Gateway trace correlation metadata when the tool call transited a Higress gateway. */
-    traceMeta?: TraceMeta
+    /** Gateway response correlations captured while this tool call was dispatched. */
+    gatewayResponseCorrelations?: GatewayResponseCorrelation[]
   }
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }
@@ -377,10 +377,26 @@ export type SurfaceOp =
   | { op: 'replace'; start: number; end: number }
 
 /**
+ * Options common to every {@link Session.append} call, surface and non-surface
+ * alike. Carries the {@link AppendOptions.ignorable} marker that a writer sets
+ * only on log-only records whose loss cannot affect session reconstruction; see
+ * {@link SessionEvent.ignorable} for the reader-side refusal contract.
+ */
+export interface AppendOptions {
+  /**
+   * Marks the appended event a reader may safely skip when it does not recognize
+   * `type`; absent means required. Set `true` only on observability or other
+   * purely informational records — never on message-producing surface events,
+   * which a reader must always replay.
+   */
+  ignorable?: true
+}
+
+/**
  * Surface placement and cited source-event seqs for {@link Session.append}. Required on
  * message-producing events and forbidden on log-only events.
  */
-export interface SurfaceIntent {
+export interface SurfaceIntent extends AppendOptions {
   surfaceOp: SurfaceOp
   /**
    * Complete set of known source-event seqs. `assistant/message` may use a

@@ -166,6 +166,14 @@ export interface McpUnbindRequest {
 /** The result of unbinding a server from a session. */
 export type McpUnbindResult = McpManagerResult<{ serverName: string }>
 
+/** Query one managed server and return its current tool list. */
+export interface McpServerToolsRequest {
+  serverName: string
+}
+
+/** Result of querying one server's tools. */
+export type McpServerToolsResult = McpManagerResult<{ serverName: string; toolsCount: number }>
+
 /**
  * Build the success carrier for a typed value.
  * @param value - The typed value carried by the result.

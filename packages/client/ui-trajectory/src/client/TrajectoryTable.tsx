@@ -19,6 +19,7 @@ import type {
 import type {
   AssistantMetricDetail, TrajectoryCellKind, TrajectoryCellProps, TrajectorySourceBlock,
 } from './trajectory-record.ts'
+import type { TrajectoryGatewayTrace } from './trajectory-contract.ts'
 import { formatElapsedSeconds, trajectoryRecordId } from './trajectory-record.ts'
 import {
   groupTrajectoryVirtualRows, trajectoryVirtualRecordKey,
@@ -165,6 +166,7 @@ type DetailTab =
   | 'options'
   | 'usage'
   | 'timing'
+  | 'gateway'
   | 'diff'
 type RecordState = 'complete' | 'running' | 'error'
 
@@ -219,6 +221,7 @@ const REQUEST_TABS: readonly DetailTabItem[] = [
   { id: 'options', label: 'Options' },
   { id: 'usage', label: 'Usage' },
   { id: 'timing', label: 'Timing' },
+  { id: 'gateway', label: 'Gateway' },
 ]
 
 type TrajectorySplitStyle = CSSProperties & {
@@ -343,6 +346,71 @@ function AssistantTimingPanel({ metrics }: { metrics: AssistantMetricDetail }) {
   )
 }
 
+/** Render one allow-listed gateway Span without inventing absent model usage. */
+function GatewayTraceSpanPanel({ trace }: { trace: TrajectoryGatewayTrace['spans'][number] }) {
+  const attributes = trace.attributes
+  const gatewayDuration = attributes['gen_ai.first_token_duration_ms']
+  const gatewayDurationText = gatewayDuration === undefined
+    ? undefined
+    : Number.isFinite(Number(gatewayDuration))
+      ? formatDurationMs(Number(gatewayDuration))
+      : String(gatewayDuration)
+  return (
+    <dl className={css.overview}>
+      <div><dt>Span</dt><dd>{trace.name}</dd></div>
+      {trace.durationMs !== undefined && <div><dt>Duration</dt><dd>{formatDurationMs(trace.durationMs)}</dd></div>}
+      {attributes['gen_ai.request.model'] !== undefined && <div><dt>Requested model</dt><dd>{attributes['gen_ai.request.model']}</dd></div>}
+      {attributes['gen_ai.response.model'] !== undefined && <div><dt>Response model</dt><dd>{attributes['gen_ai.response.model']}</dd></div>}
+      {attributes['gen_ai.usage.input_tokens'] !== undefined && <div><dt>Input tokens</dt><dd>{attributes['gen_ai.usage.input_tokens']}</dd></div>}
+      {attributes['gen_ai.usage.output_tokens'] !== undefined && <div><dt>Output tokens</dt><dd>{attributes['gen_ai.usage.output_tokens']}</dd></div>}
+      {attributes['gen_ai.usage.reasoning_tokens'] !== undefined && <div><dt>Reasoning tokens</dt><dd>{attributes['gen_ai.usage.reasoning_tokens']}</dd></div>}
+      {attributes['gen_ai.usage.cached_tokens'] !== undefined && <div><dt>Cached tokens</dt><dd>{attributes['gen_ai.usage.cached_tokens']}</dd></div>}
+      {gatewayDurationText !== undefined && <div><dt>Gateway TTFT</dt><dd>{gatewayDurationText}</dd></div>}
+      {attributes['mcp.service'] !== undefined && <div><dt>MCP service</dt><dd>{attributes['mcp.service']}</dd></div>}
+      {attributes['mcp.protocol'] !== undefined && <div><dt>MCP protocol</dt><dd>{attributes['mcp.protocol']}</dd></div>}
+      {attributes['mcp.method'] !== undefined && <div><dt>MCP method</dt><dd>{attributes['mcp.method']}</dd></div>}
+      {attributes['mcp.tool.name'] !== undefined && <div><dt>MCP tool</dt><dd>{attributes['mcp.tool.name']}</dd></div>}
+    </dl>
+  )
+}
+
+function GatewayTracePanel({ traces }: { traces: readonly TrajectoryGatewayTrace[] | undefined }) {
+  if (traces === undefined || traces.length === 0) {
+    return <p className={css.noPayload}>Gateway data has not arrived</p>
+  }
+  return (
+    <div className={css.overviewSections}>
+      {traces.map(trace => (
+        <div className={css.overviewSections} key={trace.requestId ?? trace.traceId}>
+          <dl className={css.overview}>
+            <div><dt>Source</dt><dd>{trace.source === 'tempo' ? 'Tempo' : 'Reconstructed'}</dd></div>
+            <div><dt>{trace.requestId === undefined ? 'Trace ID' : 'Request ID'}</dt><dd>{trace.requestId ?? trace.traceId}</dd></div>
+            {trace.observation.modelId !== undefined && <div><dt>Resolved model</dt><dd>{trace.observation.modelId}</dd></div>}
+            {trace.observation.routeId !== undefined && <div><dt>Route</dt><dd>{trace.observation.routeId}</dd></div>}
+            {trace.observation.mcpServiceId !== undefined && <div><dt>MCP service</dt><dd>{trace.observation.mcpServiceId}</dd></div>}
+            {trace.observation.statusCode !== undefined && <div><dt>Status</dt><dd>{trace.observation.statusCode}</dd></div>}
+            {trace.timing.actualDurationMs !== undefined && (
+              <div><dt>Actual duration</dt><dd>{formatDurationMs(trace.timing.actualDurationMs)}</dd></div>
+            )}
+            {trace.timing.accumulatedDurationMs !== undefined && (
+              <div><dt>Accumulated duration</dt><dd>{formatDurationMs(trace.timing.accumulatedDurationMs)}</dd></div>
+            )}
+            {trace.timing.longestSpanDurationMs !== undefined && (
+              <div><dt>Longest span</dt><dd>{formatDurationMs(trace.timing.longestSpanDurationMs)}</dd></div>
+            )}
+            {trace.observation.durationMs !== undefined && (
+              <div><dt>Gateway index duration</dt><dd>{formatDurationMs(trace.observation.durationMs)}</dd></div>
+            )}
+            <div><dt>Spans</dt><dd>{trace.spans.length}</dd></div>
+            {trace.observation.observedAt !== undefined && <div><dt>Observed</dt><dd>{trace.observation.observedAt}</dd></div>}
+          </dl>
+          {trace.spans.map((span, index) => <GatewayTraceSpanPanel key={`${trace.traceId}-${index}`} trace={span} />)}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** Props for the trajectory ledger. */
 export interface TrajectoryTableProps {
   /** Session-global request numbers for the request groups visible in this context. */
@@ -408,6 +476,8 @@ interface TrajectoryRequestNumberBase {
   requestConfig?: AssistantRequestConfig
   usage?: TrajectoryUsage
   cumulativeUsage?: TrajectoryUsage
+  /** Asynchronously queried gateway observations for this agent step. */
+  gatewayTraces?: readonly TrajectoryGatewayTrace[]
 }
 
 /** One purpose-discriminated request identity paired with its session-global number. */
@@ -1910,13 +1980,17 @@ export function TrajectoryTable({
   )
   const selectedRequestCumulativeUsage =
     selectedRequestInfo?.cumulativeUsage ?? selectedRequestUsage
+  const selectedGatewayTraces = selectedRequestInfo?.gatewayTraces
   const selectedRequestOptions = selectedRequestInfo?.requestConfig
   const activeTurn = selectedRequest === null ? selected?.turn : selectedRequest.turn
   const activeSection = selectedRequest === null
     ? selected?.section
     : selectedRequestRecords[0]?.section
   const selectedTabs = selectedRequest !== null
-    ? REQUEST_TABS.filter(tab => tab.id !== 'options' || selectedRequestOptions !== undefined)
+    ? REQUEST_TABS.filter(tab =>
+      (tab.id !== 'options' || selectedRequestOptions !== undefined)
+      && (tab.id !== 'gateway' || selectedGatewayTraces !== undefined),
+    )
     : selected === undefined ? [] : detailTabs(selected)
   const selectedParents: ParentRecords = selected === undefined
     ? {}
@@ -2807,6 +2881,11 @@ export function TrajectoryTable({
                       request={selectedRequestInfo}
                     />
                   </OverviewSection>
+                  {selectedGatewayTraces !== undefined && (
+                    <OverviewSection label="Gateway" onOpen={() => { activateTab('gateway') }}>
+                      <GatewayTracePanel traces={selectedGatewayTraces} />
+                    </OverviewSection>
+                  )}
                 </div>
               </>
             )}
@@ -2825,6 +2904,9 @@ export function TrajectoryTable({
                 anchor={selectedRequestAnchor}
                 request={selectedRequestInfo}
               />
+            )}
+            {selectedRequest !== null && activeTab === 'gateway' && (
+              <GatewayTracePanel traces={selectedGatewayTraces} />
             )}
             {promptSelected
               && selectedPreviousPrompt !== undefined

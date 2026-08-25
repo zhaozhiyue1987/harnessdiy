@@ -87,6 +87,8 @@ Input reaches the driver through one inbox. Some messages wake it immediately; i
 
 `agent/pre-step` decides what the model sees. Listeners may rewrite the claimed messages or reject them outright; a rejected or empty first claim still closes a durable turn that spent no step, so the log records the attempt. Each step reads the prompt sections and tool schemas that plugins registered.
 
+When `TraceTelemetry` is mounted, a turn owns a local `agent.run` root span. Model and tool calls create local child spans and inject the current local client span into outbound HTTP requests. A gateway response `traceparent` is stored only as correlation evidence; it never replaces the local active context or becomes a parent for a later tool call. HTTP MCP transports create an `mcp.client` child for each actual request; stdio transports do not create a gateway HTTP request.
+
 Details: the [sequence diagram](agent-lifecycle.md), the [tool pipeline](tool-execution-pipeline.md), and [cancellation and error recovery](subsystems/core.md#the-agent-handle).
 
 ## Session log

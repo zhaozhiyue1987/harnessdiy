@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
+  AgentRunId,
   buildTraceparent,
-  captureResponseTraceMeta,
-  consumeResponseTraceMeta,
+  captureGatewayResponseCorrelation,
+  collectGatewayResponseCorrelations,
   generateSpanId,
   generateTraceId,
   generateTraceparent,
@@ -102,7 +103,7 @@ describe('traceContextHeaders', () => {
   it('includes X-Agent-* headers when provided', () => {
     withTraceContext({
       traceparent: generateTraceparent(),
-      agentRunId: 'run-123',
+      agentRunId: AgentRunId('run-123'),
       agentPlatform: 'harness',
       agentApplicationId: 'agent-456',
     }, () => {
@@ -114,41 +115,56 @@ describe('traceContextHeaders', () => {
   })
 })
 
-describe('captureResponseTraceMeta / consumeResponseTraceMeta', () => {
-  it('captures and consumes trace meta from response headers', () => {
+describe('gateway response correlations', () => {
+  it('returns no collector entries outside an active trace context', async () => {
+    const { result, correlations } = await collectGatewayResponseCorrelations(async () => 'completed')
+    expect(result).toBe('completed')
+    expect(correlations).toEqual([])
+  })
+
+  it('records both response headers inside one collector', async () => {
     const headers = new Headers({
       traceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f60708-01',
       'x-request-id': 'req-abc-123',
     })
-    captureResponseTraceMeta(headers)
-    const meta = consumeResponseTraceMeta()
-    expect(meta).toBeDefined()
-    expect(meta!.traceId).toBe('bb7424f8effb4411008f0b7d04f0b07f')
-    expect(meta!.requestId).toBe('req-abc-123')
-    // Consumed — second read returns undefined
-    expect(consumeResponseTraceMeta()).toBeUndefined()
-  })
-
-  it('captures trace meta without requestId', () => {
-    const headers = new Headers({
-      traceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f60708-01',
+    const { correlations } = await withTraceContext({ traceparent: generateTraceparent() }, () =>
+      collectGatewayResponseCorrelations(async () => { captureGatewayResponseCorrelation(headers) }),
+    )
+    expect(correlations).toHaveLength(1)
+    expect(correlations[0]).toMatchObject({
+      responseTraceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f60708-01', traceId: 'bb7424f8effb4411008f0b7d04f0b07f', requestId: 'req-abc-123',
     })
-    captureResponseTraceMeta(headers)
-    const meta = consumeResponseTraceMeta()
-    expect(meta).toBeDefined()
-    expect(meta!.traceId).toBe('bb7424f8effb4411008f0b7d04f0b07f')
-    expect(meta!.requestId).toBeUndefined()
+    expect(correlations[0]?.receivedAt).toMatch(/^\d{4}-\d\d-\d\dT/)
   })
 
-  it('returns undefined when no traceparent header', () => {
+  it('keeps a request id when traceparent is absent', async () => {
     const headers = new Headers({ 'x-request-id': 'req-only' })
-    captureResponseTraceMeta(headers)
-    expect(consumeResponseTraceMeta()).toBeUndefined()
+    const { correlations } = await withTraceContext({ traceparent: generateTraceparent() }, () =>
+      collectGatewayResponseCorrelations(async () => { captureGatewayResponseCorrelation(headers) }),
+    )
+    expect(correlations[0]).toMatchObject({ requestId: 'req-only' })
+    expect(correlations[0]?.traceId).toBeUndefined()
   })
 
-  it('returns undefined for malformed traceparent', () => {
-    const headers = new Headers({ traceparent: 'garbage' })
-    captureResponseTraceMeta(headers)
-    expect(consumeResponseTraceMeta()).toBeUndefined()
+  it('returns a parsed correlation without an active collector', () => {
+    const correlation = captureGatewayResponseCorrelation(new Headers({
+      traceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f60708-01',
+      'x-request-id': 'req-direct',
+    }))
+    expect(correlation).toMatchObject({
+      responseTraceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f60708-01',
+      traceId: 'bb7424f8effb4411008f0b7d04f0b07f',
+      requestId: 'req-direct',
+    })
+  })
+
+  it('isolates parallel collectors', async () => {
+    const trace = { traceparent: generateTraceparent() }
+    const [left, right] = await withTraceContext(trace, () => Promise.all([
+      collectGatewayResponseCorrelations(async () => { captureGatewayResponseCorrelation(new Headers({ 'x-request-id': 'left' })) }),
+      collectGatewayResponseCorrelations(async () => { captureGatewayResponseCorrelation(new Headers({ 'x-request-id': 'right' })) }),
+    ]))
+    expect(left.correlations.map(item => item.requestId)).toEqual(['left'])
+    expect(right.correlations.map(item => item.requestId)).toEqual(['right'])
   })
 })

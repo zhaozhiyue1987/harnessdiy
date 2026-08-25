@@ -2,14 +2,44 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId } from '@deepseek-ai/dsh-llm'
+import { AgentRunId, CallId, withTraceContext } from '@deepseek-ai/dsh-llm'
+import TraceTelemetry, { type ActiveTraceSpan, type OutboundTraceContext, type TraceSpanOptions } from '@deepseek-ai/dsh-telemetry'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { type JsonValue } from '@deepseek-ai/dsh-tools'
 import { publicToolName, syncTools, type ToolBridgeOptions } from '@deepseek-ai/dsh-mcp-client/src/tools.ts'
-import { createTransport } from '@deepseek-ai/dsh-mcp-client/src/transport.ts'
+import { createTransport, traceAwareFetch } from '@deepseek-ai/dsh-mcp-client/src/transport.ts'
 import type { Config } from '@deepseek-ai/dsh-mcp-client'
 
 const testToolSignal = new AbortController().signal
+
+/** In-memory trace provider for checking one MCP HTTP attempt. */
+class TestTraceTelemetry extends TraceTelemetry {
+  names: string[] = []
+  private activeSpan: ActiveTraceSpan | undefined
+
+  override active(): ActiveTraceSpan | undefined { return this.activeSpan }
+
+  override identity() { return { agentPlatform: 'harness', agentApplicationId: 'test-app' } }
+
+  override outbound<TAgentRunId extends string>(
+    _agentRunId: TAgentRunId,
+  ): OutboundTraceContext<TAgentRunId> | undefined { return undefined }
+
+  override async withinSpan<T>(options: TraceSpanOptions, operation: () => Promise<T>): Promise<T> {
+    this.names.push(options.name)
+    const previous = this.activeSpan
+    this.activeSpan = {
+      traceId: 'a'.repeat(32),
+      spanId: 'b'.repeat(16),
+      traceparent: `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`,
+    }
+    try {
+      return await operation()
+    } finally {
+      this.activeSpan = previous
+    }
+  }
+}
 
 // ---- Mock MCP Client ----
 
@@ -67,6 +97,7 @@ const defaultOpts: ToolBridgeOptions = {
   registrationFailure: 'contain',
   serverName: 'srv',
   toolCallTimeoutMs: 60_000,
+  getClient: () => undefined,
 }
 
 // ---- Tests ----
@@ -492,6 +523,34 @@ describe('tool execution', () => {
     )
   })
 
+  it('notifies the supervisor when a call failure proves the remote session lapsed', async () => {
+    const onSessionInvalid = vi.fn()
+    const client = createMockClient([{ name: 'echo', inputSchema: { type: 'object' } }])
+    client.callTool.mockRejectedValue(
+      new Error(
+        'Streamable HTTP error: Error POSTing to endpoint: {"RequestId":"ac18a9e5","Code":"SessionExpired","Message":"session 423fc05527dc42629195d5be1af0525b is expired"}',
+      ),
+    )
+
+    await syncTools(client as never, ctx, { ...defaultOpts, onSessionInvalid }, new Map())
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: CallId('c1'), name: 'mcp__srv__echo', arguments: {} })
+
+    expect(result.isError).toBe(true)
+    expect(onSessionInvalid).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the connection when a call failure is not session-related', async () => {
+    const onSessionInvalid = vi.fn()
+    const client = createMockClient([{ name: 'echo', inputSchema: { type: 'object' } }])
+    client.callTool.mockRejectedValue(new Error('upstream server busy, retry later'))
+
+    await syncTools(client as never, ctx, { ...defaultOpts, onSessionInvalid }, new Map())
+    const result = await ctx.tools.execute({ signal: testToolSignal, callId: CallId('c1'), name: 'mcp__srv__echo', arguments: {} })
+
+    expect(result.isError).toBe(true)
+    expect(onSessionInvalid).not.toHaveBeenCalled()
+  })
+
   it('handles legacy toolResult shape', async () => {
     const client = createMockClient(
       [{ name: 'legacy', inputSchema: { type: 'object' } }],
@@ -797,6 +856,36 @@ describe('createTransport', () => {
     }
     const transport = createTransport(config)
     expect(transport).toBeDefined()
+  })
+})
+
+describe('traceAwareFetch', () => {
+  it('creates an mcp client span and overwrites caller correlation headers', async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(null, { headers: { 'x-request-id': 'gateway-mcp-request' } }))
+    vi.stubGlobal('fetch', fetchMock)
+    const telemetry = new TestTraceTelemetry(new Context())
+
+    try {
+      await withTraceContext({
+        traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01`,
+        agentRunId: AgentRunId('agent-run-1'),
+        agentPlatform: 'harness',
+        agentApplicationId: 'test-app',
+      }, () => traceAwareFetch(telemetry, 'https://mcp.test/call', {
+        headers: { traceparent: 'caller-must-not-win', 'x-agent-run-id': 'caller-must-not-win' },
+      }))
+
+      expect(telemetry.names).toEqual(['mcp.client'])
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers)
+      expect(headers.get('traceparent')).toBe(`00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`)
+      expect(headers.get('x-agent-run-id')).toBe('agent-run-1')
+      expect(headers.get('x-agent-platform')).toBe('harness')
+      expect(headers.get('x-agent-application-id')).toBe('test-app')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

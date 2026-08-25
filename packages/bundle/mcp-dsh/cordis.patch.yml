@@ -1,0 +1,13 @@
+# The dsh-mcp bundle patch: managed MCP server catalog and session-scoped
+# bindings over dsh-base. Apply this layer when a profile needs the
+# mcp-manager service (persistent server catalog, bind/unbind, live tool
+# inventory) without the full web surface. The web-app bundle already mounts
+# mcp-manager directly; this layer is for headless and custom profiles.
+#
+# Compose: dsh --profile headless,mcp
+
+- insert:
+    # Managed MCP server catalog + session-scoped bindings. Settings
+    # persistence requires the dsh-settings service (already in base).
+    - id: mcp-manager
+      name: '@deepseek-ai/dsh-mcp-manager'

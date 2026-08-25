@@ -91,6 +91,8 @@ turn/end
 
 `agent/pre-step` 决定模型看到什么。监听器可以改写已领取的消息，也可以直接拒绝它们；首次领取被拒绝或被改写为空时，仍会关闭一个不含步骤的持久轮次，因此日志会记录这次尝试。每个步骤读取插件注册的提示词片段和工具 schema。
 
+挂载 `TraceTelemetry` 后，一个 turn 拥有本地 `agent.run` 根 Span。模型和工具调用会创建本地子 Span，并将当前本地 client Span 注入出站 HTTP 请求。网关响应 `traceparent` 只作为关联证据保存；它绝不替换本地活动上下文，也绝不成为后续工具调用的父节点。HTTP MCP 传输会为每个实际请求创建 `mcp.client` 子 Span；stdio 传输不会产生网关 HTTP 请求。
+
 详情见[时序图](agent-lifecycle.md)、[工具流水线](tool-execution-pipeline.md)和[取消与错误恢复](subsystems/core.md#the-agent-handle)。
 
 ## 会话日志

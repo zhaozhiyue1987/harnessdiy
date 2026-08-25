@@ -20,6 +20,8 @@ import type {
   McpRemoveRequest,
   McpRemoveResult,
   McpServerSpec,
+  McpServerToolsRequest,
+  McpServerToolsResult,
   McpUnbindRequest,
   McpUnbindResult,
   McpUpsertRequest,
@@ -39,6 +41,7 @@ export interface McpManagerRemote {
   bound: (agentId: SessionId) => Promise<RemoteResult<McpBoundResult>>
   bind: (agentId: SessionId, request: McpBindRequest) => Promise<RemoteResult<McpBindResult>>
   unbind: (agentId: SessionId, request: McpUnbindRequest) => Promise<RemoteResult<McpUnbindResult>>
+  serverTools: (request: McpServerToolsRequest) => Promise<RemoteResult<McpServerToolsResult>>
 }
 
 /** Load state shared by every controller. */
@@ -67,6 +70,8 @@ export interface McpCatalogView {
   status: McpLoadStatus
   error: string | null
   servers: McpServerSpec[]
+  /** Cached tool counts keyed by server name; `null` means not yet fetched. */
+  toolCounts: ReadonlyMap<string, number>
 }
 
 /** One session's bindings, rendering chip state in the input dock. */
@@ -77,7 +82,7 @@ export interface McpSessionView {
   catalog: McpServerSpec[]
 }
 
-const COLD_CATALOG: McpCatalogView = Object.freeze({ status: 'cold', error: null, servers: [] })
+const COLD_CATALOG: McpCatalogView = Object.freeze({ status: 'cold', error: null, servers: [], toolCounts: new Map() })
 
 const COLD_SESSION: McpSessionView = Object.freeze({ status: 'cold', error: null, servers: [], catalog: [] })
 
@@ -126,14 +131,14 @@ export class McpCatalogController {
   /** Load the catalog once; later calls reload it. */
   load(): void {
     if (this.view.status === 'loading') return
-    this.publish({ status: 'loading', error: null, servers: this.view.servers })
+    this.publish({ status: 'loading', error: null, servers: this.view.servers, toolCounts: this.view.toolCounts })
     void (async () => {
       const result = await this.remote.list()
       if (result.ok && result.value.ok) {
         this.loaded = true
-        this.publish({ status: 'ready', error: null, servers: result.value.value.servers })
+        this.publish({ status: 'ready', error: null, servers: result.value.value.servers, toolCounts: this.view.toolCounts })
       } else {
-        this.publish({ status: 'error', error: failureText(result), servers: this.view.servers })
+        this.publish({ status: 'error', error: failureText(result), servers: this.view.servers, toolCounts: this.view.toolCounts })
       }
     })()
   }
@@ -141,6 +146,22 @@ export class McpCatalogController {
   /** Re-read only when a previous load already succeeded (transient resets). */
   resync(): void {
     if (this.loaded) this.load()
+  }
+
+  /**
+   * Fetch the tool count for one catalog server. Connects to the server,
+   * lists its tools, then disconnects. Updates the cached toolCounts map.
+   * @param serverName - The catalog name of the server to query.
+   * @returns The action outcome.
+   */
+  async fetchToolCount(serverName: string): Promise<McpActionResult> {
+    const result = await this.remote.serverTools({ serverName })
+    if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message }
+    if (!result.value.ok) return { ok: false, code: result.value.code, message: result.value.message }
+    const counts = new Map(this.view.toolCounts)
+    counts.set(serverName, result.value.value.toolsCount)
+    this.publish({ ...this.view, toolCounts: counts })
+    return OK
   }
 
   /**
@@ -155,7 +176,7 @@ export class McpCatalogController {
       .then(() => this.remote.list())
       .then((reloaded) => {
         if (reloaded.ok && reloaded.value.ok) {
-          this.publish({ status: 'ready', error: null, servers: reloaded.value.value.servers })
+          this.publish({ status: 'ready', error: null, servers: reloaded.value.value.servers, toolCounts: this.view.toolCounts })
         }
       })
       .catch(() => { /* reload failure keeps the last good view */ })
@@ -171,7 +192,9 @@ export class McpCatalogController {
   async deleteServer(serverName: string): Promise<McpActionResult> {
     const result = await this.remote.deleteServer({ serverName })
     if (!result.ok) return { ok: false, code: result.error.code, message: result.error.message }
-    this.publish({ status: 'ready', error: null, servers: this.view.servers.filter(s => s.serverName !== serverName) })
+    const counts = new Map(this.view.toolCounts)
+    counts.delete(serverName)
+    this.publish({ status: 'ready', error: null, servers: this.view.servers.filter(s => s.serverName !== serverName), toolCounts: counts })
     return OK
   }
 }

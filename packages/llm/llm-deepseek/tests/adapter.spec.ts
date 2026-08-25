@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import LlmRuntime, { createUserMessage,
+  AgentRunId,
   CONTEXT_WINDOW_EXCEEDED_CODE,
   ProviderRequestId,
   QUOTA_EXCEEDED_CODE,
@@ -91,10 +92,16 @@ describe('DeepSeekAdapter against a mock server', () => {
   })
 
   it('streams raw chunks through ctx.llm.stream', async () => {
-    const server = await mockServer([{ kind: 'sse', events: textEvents, delayMs: 2 }])
+    const responseTraceparent = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`
+    const server = await mockServer([{
+      kind: 'sse',
+      events: textEvents,
+      delayMs: 2,
+      headers: { traceparent: responseTraceparent, 'x-deepseek-request-id': 'deepseek-response' },
+    }, { kind: 'sse', events: textEvents }])
     const ctx = await harness(server.url)
 
-    const kinds: string[] = []
+    const chunks = [] as import('@deepseek-ai/dsh-llm').StreamChunk[]
     for await (const chunk of ctx.llm.stream({
       provider: 'deepseek-official',
       model: 'deepseek-v4-flash',
@@ -102,10 +109,41 @@ describe('DeepSeekAdapter against a mock server', () => {
         content: [{ type: 'text', text: 'hi' }],
         source: { kind: 'plugin', plugin: 'test' },
       })],
-    })) {
-      kinds.push(chunk.type)
-    }
-    expect(kinds).toEqual(['block-start', 'text-delta', 'block-end', 'usage', 'finish'])
+      requestTrace: {
+        traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01`,
+        agentRunId: AgentRunId('run-123'),
+        agentPlatform: 'harness',
+        agentApplicationId: 'gateway-test',
+      },
+    })) chunks.push(chunk)
+    expect(chunks[0]).toMatchObject({
+      type: 'trace-meta',
+      traceMeta: {
+        responseTraceparent,
+        traceId: 'a'.repeat(32),
+        requestId: 'deepseek-response',
+      },
+    })
+    expect(chunks.map(chunk => chunk.type)).toEqual(['trace-meta', 'block-start', 'text-delta', 'block-end', 'usage', 'finish'])
+    expect(server.headers[0]).toMatchObject({
+      traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01`,
+      'x-agent-run-id': 'run-123',
+      'x-agent-platform': 'harness',
+      'x-agent-application-id': 'gateway-test',
+    })
+
+    for await (const _chunk of ctx.llm.stream({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      messages: [createUserMessage({
+        content: [{ type: 'text', text: 'no optional trace fields' }],
+        source: { kind: 'plugin', plugin: 'test' },
+      })],
+      requestTrace: { traceparent: `00-${'e'.repeat(32)}-${'f'.repeat(16)}-01` },
+    })) void _chunk
+    expect(server.headers[1]).not.toHaveProperty('x-agent-run-id')
+    expect(server.headers[1]).not.toHaveProperty('x-agent-platform')
+    expect(server.headers[1]).not.toHaveProperty('x-agent-application-id')
   })
 
   it('forwards the harness user and session ids for host-side trajectory routing', async () => {

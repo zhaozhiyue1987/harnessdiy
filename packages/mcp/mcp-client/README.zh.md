@@ -61,6 +61,8 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 
 每个 MCP 工具都有两个名称：通过 `tools/call` 在协议上传送的原始 MCP 名称，以及公开名称 `mcp__<serverName>__<rawName>`，后者注册到 `ctx.tools`。公开名称会规范化为 DeepSeek 函数名称约定（64 个字符、`[A-Za-z0-9_-]`）；如果替换或截断改变名称，就会追加 `(serverName, rawName)` 的确定性 12 位十六进制 hash，确保不同工具绝不会折叠为同一个名称。名称是 `(serverName, rawName)` 的纯函数：连接顺序、重新同步和其他服务器永远不会重命名工具。
 
+对于在 `TraceTelemetry` 下运行的 HTTP 传输，每次 MCP HTTP 尝试都会在活动 `mcp.tools.call` Span 下创建一个 `mcp.client` Span。Harness 使用该本地 client Span 覆盖关联 header，仅为反查记录返回的 request 和 trace 标识；MCP 重试绝不会退回为未追踪请求。
+
 - 发布相同原始名称（例如 `search`）的两个服务器会在各自 namespace 下共存。
 - 存活实例中的重复 `serverName` 会使后加载的插件实例失败。
 - 服务器在工具列表中两次列出同一工具名称时，该列表会作为无效工具列表被拒绝。
@@ -117,6 +119,6 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 
 - **只桥接 MCP 的工具能力**：资源和提示词没有 harness 消费接口，暂缓实现。
 - **启动超时继承自 MCP SDK**：DSH 尚未公开连接／发现超时。每次 initialize 请求或分页 `tools/list` 请求都使用 SDK 默认的 60 秒，因此在初始同步完成期间，无响应的 server 或 cursor chain 可能同时延迟激活与 teardown。
-- **重连在传输关闭时触发**：崩溃的 stdio 子进程会触发重连；Streamable HTTP 失败通过每次请求以及 SDK 传输自身的 SSE（Server-Sent Events）流恢复机制暴露，因此不可达的 HTTP 服务器会按调用重试，而非由 supervisor 重新 spawn。
+- **重连在传输关闭时触发**：崩溃的 stdio 子进程会触发重连；除此之外 Streamable HTTP 失败通过每次请求以及 SDK 传输自身的 SSE（Server-Sent Events）流恢复机制暴露，因此不可达的 HTTP 服务器会按调用重试，而非由 supervisor 重新 spawn。唯一的例外：若 `tools/call` 失败证明远端会话已失效（`SessionExpired`、`MCP-Server-Session-Not-Valid` 等），会拆除当前 generation 使其重连并协商全新会话 ID，而不是继续复用失效的那个。
 - **Native 非文本渲染有损**：图片、音频与资源载荷在模型上下文中会变成占位符，即使执行局部的规范值保留了其 JSON 块。更丰富的 Native 多媒体投影暂缓实现。
 - **不强制执行不受支持的 MCP 输出 schema**：已声明 schema 使用 harness 子集之外的词汇时，`structuredContent` 会回退到 `JsonValue`。

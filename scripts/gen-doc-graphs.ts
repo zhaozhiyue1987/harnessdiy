@@ -115,6 +115,24 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Adapters register provider implementations; the loop and compaction call the provider-neutral stream service.',
   },
   {
+    key: 'gatewayTrace',
+    pkg: 'gateway-trace',
+    title: 'Higress Trace reverse-query seam',
+    mode: 'seam',
+    implementations: ['gateway-trace-query', 'gateway-trace-console'],
+    consumers: ['ui-trajectory'],
+    note: 'Trusted Host providers query authorized Higress facts after a response; the browser reads only the sanitized, persisted observation.',
+  },
+  {
+    key: 'traceTelemetry',
+    pkg: 'telemetry',
+    title: 'Local OpenTelemetry Trace seam',
+    mode: 'seam',
+    implementations: ['telemetry-otel'],
+    consumers: ['agent-loop', 'mcp-client', 'session-title-llm'],
+    note: 'Consumers create semantic spans and inject the active W3C context; the provider exports finished spans without changing request content.',
+  },
+  {
     key: 'tokenMeter',
     pkg: 'token-meter',
     title: 'Replay token measurement',
@@ -1183,6 +1201,8 @@ function renderEventRelations(pkgs: Pkg[], events: readonly EventEntry[]): strin
   const maintenance = 'generated: Cordis event declarations and producer/listener edges are resolved from the repository TypeScript Program'
   const lines = generatedHeader('Event Producer And Consumer Matrix')
   lines.push(
+    'English | [中文](event-producer-consumer.zh.md)',
+    '',
     'This matrix shows which packages dispatch each harness-owned event and which packages listen to it. Events are many-to-many, so the dense relation data is presented as a table rather than one large graph. Receiver and event-name types also cover contained dispatch sites that deliberately bypass `ctx.emit`, such as subagent lifecycle containment.',
     '',
     '| Event | Mode | Declared in | Dispatchers | Listeners |',

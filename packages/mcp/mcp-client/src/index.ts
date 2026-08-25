@@ -20,11 +20,13 @@ import { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './c
 import type { ConnectionHandle, ReconnectConfig } from './connection.ts'
 // Side-effect type import: declaration-merges `ctx.tools` onto Context.
 import type {} from '@deepseek-ai/dsh-tools'
+import type {} from '@deepseek-ai/dsh-telemetry'
 
 export type { McpResult, McpToolDescriptor } from './tools.ts'
 export { publicToolName } from './tools.ts'
 export type { ConnectionHandle, ReconnectConfig, ResolvedReconnectPolicy } from './connection.ts'
 export { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './connection.ts'
+export { createTransport } from './transport.ts'
 
 /**
  * Live connection handles by root context, so a management surface (the

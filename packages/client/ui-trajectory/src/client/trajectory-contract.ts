@@ -3,6 +3,17 @@ import type {
   ConversationPromptSnapshot, ConversationViewNode, PartialAssistant,
   RequestPromptChange, RequestView, RunningToolCall, ToolCallBlock,
 } from '@deepseek-ai/dsh-client-runtime/client'
+import type { GatewayTraceObservation } from '@deepseek-ai/dsh-gateway-trace'
+
+/** One gateway observation joined to the agent turn and step that produced it. */
+export interface TrajectoryGatewayTrace extends GatewayTraceObservation {
+  /** Exact response request id when the gateway supplied one. */
+  requestId?: import('@deepseek-ai/dsh-llm').GatewayRequestId
+  /** Turn of the observation's durable source stage. */
+  turn: number
+  /** Step of the observation's durable source stage. */
+  step: number
+}
 
 /** Request-header facts retained by the Trajectory target. */
 export interface TrajectoryRequestHeaderState {
@@ -48,6 +59,10 @@ export type TrajectoryContribution =
     readonly time: number
     readonly error?: string
   }
+  | {
+    readonly kind: 'gateway-trace'
+    readonly trace: TrajectoryGatewayTrace
+  }
 
 /** Target envelope consumed by the Trajectory snapshot builder. */
 export interface TrajectoryConversationViewNode extends ConversationViewNode {
@@ -62,6 +77,8 @@ export interface TrajectorySnapshot {
   readonly eventNodes: readonly ConversationNode[]
   readonly eventLocations: ReadonlyMap<number, ConversationLocation>
   readonly requests: readonly RequestView[]
+  /** Gateway observations grouped by the step that produced each request. */
+  readonly gatewayTraces: ReadonlyMap<string, readonly TrajectoryGatewayTrace[]>
   readonly callSchemas: ReadonlyMap<string, ConversationPromptSnapshot['tools'][number]>
   readonly partial: PartialAssistant | null
   readonly runningCalls: readonly RunningToolCall[]

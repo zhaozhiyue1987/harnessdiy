@@ -18,6 +18,16 @@ flowchart LR
   pkg_llm_replay["llm-replay"]
   pkg_agent_loop["agent-loop"]
   pkg_compaction_basic["compaction-basic"]
+  pkg_gateway_trace["gateway-trace"]
+  svc_gatewayTrace["ctx.gatewayTrace<br/>Higress Trace reverse-query seam"]
+  pkg_gateway_trace_query["gateway-trace-query"]
+  pkg_gateway_trace_console["gateway-trace-console"]
+  pkg_ui_trajectory["ui-trajectory"]
+  pkg_telemetry["telemetry"]
+  svc_traceTelemetry["ctx.traceTelemetry<br/>Local OpenTelemetry Trace seam"]
+  pkg_telemetry_otel["telemetry-otel"]
+  pkg_mcp_client["mcp-client"]
+  pkg_session_title_llm["session-title-llm"]
   pkg_token_meter["token-meter"]
   svc_tokenMeter["ctx.tokenMeter<br/>Replay token measurement"]
   pkg_compaction_tool_result_pruner["compaction-tool-result-pruner"]
@@ -223,6 +233,9 @@ flowchart LR
   pkg_fs_e2b --> svc_fs
   pkg_fs_local --> svc_fs
   pkg_fs_sandbox --> svc_fs
+  pkg_gateway_trace --> svc_gatewayTrace
+  pkg_gateway_trace_console --> svc_gatewayTrace
+  pkg_gateway_trace_query --> svc_gatewayTrace
   pkg_goal --> svc_goals
   pkg_invariants --> svc_invariants
   pkg_jobs --> svc_jobs
@@ -279,6 +292,8 @@ flowchart LR
   pkg_subprocess_e2b --> svc_subprocess
   pkg_subprocess_local --> svc_subprocess
   pkg_system_prompt --> svc_systemPrompt
+  pkg_telemetry --> svc_traceTelemetry
+  pkg_telemetry_otel --> svc_traceTelemetry
   pkg_terminal --> svc_terminals
   pkg_terminal_bash --> svc_terminals
   pkg_token_meter --> svc_tokenMeter
@@ -317,6 +332,7 @@ flowchart LR
   svc_e2b --> pkg_fs_e2b
   svc_e2b --> pkg_subprocess_e2b
   svc_fs --> pkg_tool_fs
+  svc_gatewayTrace --> pkg_ui_trajectory
   svc_invariants --> pkg_agent
   svc_invariants --> pkg_agent_loop
   svc_invariants --> pkg_scope
@@ -396,6 +412,9 @@ flowchart LR
   svc_tools --> pkg_tool_terminal
   svc_tools --> pkg_tool_todo
   svc_tools --> pkg_tool_web
+  svc_traceTelemetry --> pkg_agent_loop
+  svc_traceTelemetry --> pkg_mcp_client
+  svc_traceTelemetry --> pkg_session_title_llm
   svc_typert --> pkg_api_gateway
   svc_typert --> pkg_typert_loader
   svc_userQuestions --> pkg_tool_ask_user
@@ -413,6 +432,8 @@ flowchart LR
 | --- | --- | --- | --- | --- | --- | --- |
 | `ctx.attachments` | `seam` | [`attachment`](../packages/attachment/attachment) | [`attachment-local`](../packages/attachment/attachment-local) | `host-runtime`, [`llm-pi-ai`](../packages/llm/llm-pi-ai) | - | The host commits accepted images before session events; provider adapters resolve authorized durable references into provider-native content. |
 | `ctx.llm` | `seam` | [`llm`](../packages/llm/llm) | [`llm-deepseek`](../packages/llm/llm-deepseek), [`llm-pi-ai`](../packages/llm/llm-pi-ai), [`llm-replay`](../packages/test-support/llm-replay) | [`agent-loop`](../packages/core/agent-loop), [`compaction-basic`](../packages/compaction/compaction-basic) | - | Adapters register provider implementations; the loop and compaction call the provider-neutral stream service. |
+| `ctx.gatewayTrace` | `seam` | [`gateway-trace`](../packages/gateway/gateway-trace) | [`gateway-trace-query`](../packages/gateway/gateway-trace-query), [`gateway-trace-console`](../packages/gateway/gateway-trace-console) | `ui-trajectory` | - | Trusted Host providers query authorized Higress facts after a response; the browser reads only the sanitized, persisted observation. |
+| `ctx.traceTelemetry` | `seam` | [`telemetry`](../packages/telemetry/telemetry) | [`telemetry-otel`](../packages/telemetry/telemetry-otel) | [`agent-loop`](../packages/core/agent-loop), [`mcp-client`](../packages/mcp/mcp-client), [`session-title-llm`](../packages/session/session-title-llm) | - | Consumers create semantic spans and inject the active W3C context; the provider exports finished spans without changing request content. |
 | `ctx.tokenMeter` | `core` | [`token-meter`](../packages/llm/token-meter) | - | [`compaction-basic`](../packages/compaction/compaction-basic) | - | Owns isolated per-session replay folds; pressure consumers share immutable revisioned measurements. |
 | `ctx.toolResultPruner` | `core` | [`compaction-tool-result-pruner`](../packages/compaction/compaction-tool-result-pruner) | - | [`compaction-basic`](../packages/compaction/compaction-basic) | - | Rewrites oversized current tool results through replayable single-node surface replacements before summary compaction. |
 | `ctx.sessions` | `core` | [`session`](../packages/core/session) | - | [`agent-loop`](../packages/core/agent-loop), [`agent`](../packages/core/agent), [`session-persistence`](../packages/session/session-persistence), [`session-query`](../packages/session-query/session-query), [`session-query-sqlite`](../packages/session-query/session-query-sqlite), `subagent-inprocess`, [`invariants`](../packages/runtime-diagnostics/invariants), [`message-feedback`](../packages/feedback/message-feedback) | - | Owns append-only Session instances and emits the durable session event feed. |

@@ -27,6 +27,21 @@ export interface ToolBridgeOptions {
   registrationFailure: 'contain' | 'throw'
   serverName: string
   toolCallTimeoutMs: number
+  /**
+   * Called when a `tools/call` fails in a way that proves the remote MCP
+   * session is gone (e.g. a Streamable HTTP gateway's `SessionExpired`).
+   * The supervisor tears the generation down so reconnection renegotiates a
+   * fresh session. Returns a promise that resolves once the reconnected client
+   * is ready for new requests (or rejects if reconnection ultimately fails).
+   */
+  onSessionInvalid?: () => Promise<void>
+  /**
+   * Returns the live MCP Client for the current connection generation. Used
+   * by tool executors to obtain the fresh client after an `onSessionInvalid`
+   * reconnection, so the retry targets the new session rather than the stale
+   * one captured at registration time.
+   */
+  getClient: () => Client | undefined
 }
 
 /** State for one sync generation: the current set of disposers keyed by public name. */
@@ -86,6 +101,48 @@ function callToolUncached(
       timeout: opts.toolCallTimeoutMs,
     },
   )
+}
+
+/**
+ * Canonical signals that a `tools/call` failure means the remote session is
+ * gone: the Streamable HTTP spec's session-fault vocabulary and the ModelScope
+ * gateway payload observed in the wild (`Code: SessionExpired` with a message
+ * naming the dead id). The SDK keeps sending the stale session id on the wire
+ * and cannot recover in-place, so the supervisor must reconnect. Matching is
+ * deliberately narrow to avoid tearing down an otherwise healthy connection on
+ * server text that merely quotes these phrases.
+ */
+const LAPSED_SESSION_MARKERS = Object.freeze([
+  'sessionexpired',
+  'session is expired',
+  'session has expired',
+  'mcp-server-session-not-valid',
+  'mcp session id header is not valid',
+])
+
+/**
+ * Whether a `tools/call` error proves the remote MCP session lapsed. The
+ * stringification walks the `cause` chain because the SDK wraps a gateway's
+ * JSON-RPC payload in an English sentence, possibly with the original nested
+ * underneath; case is folded because server payloads are not consistent.
+ *
+ * @param error - The error thrown by the tool call.
+ * @returns True when the error names an expired or invalid remote session.
+ */
+function isLapsedSessionError(error: unknown): boolean {
+  const seen = new Set<unknown>()
+  const chunks: string[] = []
+  for (
+    let current: unknown = error;
+    current !== null && typeof current === 'object' && !seen.has(current);
+    current = (current as { cause?: unknown }).cause
+  ) {
+    seen.add(current)
+    const message = (current as { message?: unknown }).message
+    if (typeof message === 'string' && !chunks.includes(message)) chunks.push(message)
+  }
+  const text = chunks.join('\n').toLowerCase()
+  return LAPSED_SESSION_MARKERS.some(marker => text.includes(marker))
 }
 
 /**
@@ -261,7 +318,29 @@ function createExecutor(
     // string/number/null). Fallback to {} lets the MCP server produce a
     // specific "missing required param" error the model can learn from.
     const argsObj = (typeof args === 'object' && args !== null ? args : {}) as Record<string, unknown>
-    const result = await callToolUncached(client, rawName, argsObj, exec, opts)
+    const result = await callToolUncached(client, rawName, argsObj, exec, opts).catch(async (error: unknown) => {
+      // A lapsed remote session cannot heal in-place: notify the supervisor so
+      // its reconnect loop renegotiates a fresh one. When the supervisor
+      // provides a reconnection promise, wait for the new session and retry
+      // the call once instead of surfacing the expired-session error to the
+      // model (which cannot recover from it).
+      if (isLapsedSessionError(error) && opts.onSessionInvalid) {
+        try {
+          await opts.onSessionInvalid()
+          // The supervisor replaced the generation; obtain the fresh client
+          // so the retry targets the new session instead of the stale one
+          // captured at registration time.
+          const freshClient = opts.getClient()
+          if (freshClient !== undefined) {
+            return await callToolUncached(freshClient, rawName, argsObj, exec, opts)
+          }
+        } catch {
+          // Reconnect failed or the retry itself errored — fall through to
+          // rethrow the original session-expired error.
+        }
+      }
+      throw error
+    })
 
     // The SDK may return a legacy `toolResult` shape; normalize to content array.
     if (!Array.isArray(result.content)) {

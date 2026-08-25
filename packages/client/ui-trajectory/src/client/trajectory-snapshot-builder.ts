@@ -6,7 +6,7 @@ import type {
 } from '@deepseek-ai/dsh-client-runtime/client'
 import type {
   TrajectoryConversationViewNode, TrajectoryRequestHeaderState,
-  TrajectorySnapshot,
+  TrajectoryGatewayTrace, TrajectorySnapshot,
 } from './trajectory-contract.ts'
 
 const EMPTY_LIST: readonly never[] = []
@@ -18,6 +18,7 @@ export const EMPTY_TRAJECTORY_SNAPSHOT: TrajectorySnapshot = {
   eventNodes: EMPTY_LIST,
   eventLocations: new Map(),
   requests: EMPTY_LIST,
+  gatewayTraces: new Map(),
   callSchemas: new Map(),
   partial: null,
   runningCalls: EMPTY_LIST,
@@ -185,6 +186,7 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
     const boundaries: { seq: number; time: number }[] = []
     const turnEndings: { turn: number; time: number; error?: string }[] = []
     const callSchemas = new Map<string, ToolSchema>()
+    const gatewayTraces = new Map<string, TrajectoryGatewayTrace[]>()
     const consumedPromptChanges = new Set<number>()
     let previousHeader: TrajectoryRequestHeaderState | undefined
     let previousTools: ReadonlyMap<string, ToolSchema> = new Map()
@@ -196,6 +198,11 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
       if (data.kind === 'request-header') {
         previousHeader = data.header
         previousTools = indexTools(data.header.prompt.tools)
+        continue
+      }
+      if (data.kind === 'gateway-trace') {
+        const key = stepKey(data.trace.turn, data.trace.step)
+        gatewayTraces.set(key, [...gatewayTraces.get(key) ?? [], data.trace])
         continue
       }
       if (data.kind === 'node') {
@@ -249,6 +256,7 @@ export class TrajectorySnapshotBuilder implements ConversationViewBuilder<
       eventNodes,
       eventLocations,
       requests,
+      gatewayTraces,
       callSchemas,
       partial,
       runningCalls,

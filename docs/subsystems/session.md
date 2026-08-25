@@ -61,7 +61,7 @@ interface SessionEventMap {
    * the model output and its accounting travel together (there is no separate
    * usage record). `usage` is absent when the adapter reported none.
    */
-  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; traceMeta?: TraceMeta }
+  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; traceMeta?: GatewayResponseCorrelation }
   /**
    * The model requested one tool invocation: `name` with the raw `arguments`
    * JSON string exactly as the model produced it (unparsed). `callId` pairs the
@@ -85,6 +85,8 @@ interface SessionEventMap {
     message: ToolResultMessage
     error?: { name: string; code: string }
     meta?: JsonValue
+    /** Gateway response correlations captured while this tool call was dispatched. */
+    gatewayResponseCorrelations?: GatewayResponseCorrelation[]
   }
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }
@@ -296,7 +298,7 @@ type SurfaceOp =
  * Surface placement and cited source-event seqs for {@link Session.append}. Required on
  * message-producing events and forbidden on log-only events.
  */
-interface SurfaceIntent {
+interface SurfaceIntent extends AppendOptions {
   surfaceOp: SurfaceOp
   /**
    * Complete set of known source-event seqs. `assistant/message` may use a
@@ -472,7 +474,7 @@ declare class Session {
   append<T extends SessionEventType>(
     type: T,
     data: SessionEventMap[T],
-    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : []
+    ...opts: T extends SurfaceEventType ? [opts: SurfaceIntent] : [opts?: AppendOptions]
   ): SessionEvent<T>;
   /**
    * The {@link EpochHeader} in force after the log's last header event — the
@@ -746,7 +748,7 @@ fork(source: SessionForkSource, boundary?: number, childSessionId?: SessionId): 
 
 Types: [CreateSessionOptions](persistence.md) · [PrepareSessionOptions](persistence.md) · [SessionId](core.md)
 
-Source: [`packages/core/session/src/index.ts:792`](../../packages/core/session/src/index.ts)
+Source: [`packages/core/session/src/index.ts:798`](../../packages/core/session/src/index.ts)
 
 <a id="session-events"></a>
 

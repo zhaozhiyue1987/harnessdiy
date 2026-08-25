@@ -3,7 +3,7 @@ import type { IncomingMessage, Server, ServerResponse } from 'node:http'
 
 /** One scripted behavior for the next request the mock server receives. */
 export type Behavior =
-  | { kind: 'sse'; events: string[]; delayMs?: number }
+  | { kind: 'sse'; events: string[]; delayMs?: number; headers?: Record<string, string> }
   | { kind: 'http-error'; status: number; body: string; contentType?: string; headers?: Record<string, string> }
   | { kind: 'close-early'; events: string[] }
 
@@ -55,7 +55,10 @@ export async function mockServer(script: Behavior[]): Promise<MockServer> {
         response.end(behavior.body)
         return
       }
-      response.writeHead(200, { 'content-type': 'text/event-stream' })
+      response.writeHead(200, {
+        'content-type': 'text/event-stream',
+        ...behavior.kind === 'sse' ? behavior.headers : {},
+      })
       const write = (index: number): void => {
         if (index >= behavior.events.length) {
           if (behavior.kind === 'sse') response.end()

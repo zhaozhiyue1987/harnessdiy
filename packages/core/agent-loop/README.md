@@ -38,6 +38,8 @@ The optional `@deepseek-ai/dsh-agent-loop/invariant` companion registers request
 ```ts
 interface Config {
   maxParallelToolCalls?: number // default 10; 1 is serial
+  agentPlatform?: string        // default 'deepseek-harness'; X-Agent-Platform gateway business header
+  agentApplicationId?: string   // optional; X-Agent-Application-Id gateway business header
   agents: Array<{
     id: string                 // required
     provider?: string
@@ -49,7 +51,9 @@ interface Config {
 }
 ```
 
-Configured agents start automatically. A model call requires both `provider` and `model`; `agent/request` may supply a missing pair before dispatch. An optional positive `maxTokens` seeds each conversation request's output cap and is logged in its request header. `maxParallelToolCalls` bounds every agent's rolling pool for parallel-safe calls and defaults to `10`; it is also the whole of the `agent-loop` Settings section, so a user layer over this entry caps the next tool group without a restart, and a value that is not a positive integer is refused at the write rather than at that group. `agents` is deliberately absent from that section — it is consumed once when the service starts, so a stored change could only look like it had an effect. `cwd` applies only to fresh sessions, while `resumeSessionId` retains persisted metadata. Configured agents use the deployment persona, and programmatic setup can shadow it per agent. This plugin supplies the per-agent `provider`, `model`, and `cwd` prompt variables; harness identity and deployment persona belong to `dsh-system-prompt`.
+Configured agents start automatically. A model call requires both `provider` and `model`; `agent/request` may supply a missing pair before dispatch. An optional positive `maxTokens` seeds each conversation request's output cap and is logged in its request header. `maxParallelToolCalls` bounds every agent's rolling pool for parallel-safe calls and defaults to `10`; it is also the whole of the `agent-loop` Settings section, so a user layer over this entry caps the next tool group without a restart, and a value that is not a positive integer is refused at the write rather than at that group. `agents` is deliberately absent from that section — it is consumed once when the service starts, so a stored change could only look like it had an effect. `cwd` applies only to fresh sessions, while `resumeSessionId` retains persisted metadata. Configured agents use the deployment persona, and programmatic setup can shadow it per agent. This plugin supplies the per-agent `provider`, `model`, and `cwd` prompt variables; harness identity and deployment persona belong to `dsh-system-prompt`. Each driver execution mints one opaque `X-Agent-Run-Id`; every loop-built LLM request and every HTTP MCP request in that execution use it with a W3C `traceparent`. `X-Agent-Platform` and `X-Agent-Application-Id` come from the mounted telemetry provider, while an unmounted provider uses the loop configuration. These deployment headers are not model-visible and never enter the session log.
+
+When `TraceTelemetry` is mounted, one driver execution creates one `agent.run` root span with its run, platform, application, and agent identifiers. Model attempts create nested `gen_ai.chat` and `llm.client` spans; tool dispatches create `mcp.tools.call` and HTTP attempts create `mcp.client` spans under the same root. The injected header comes from the current local client span. A gateway response is retained only as `responseTraceparent`, request id, and trace id for correlation; it never becomes a parent for a later tool call.
 
 ### Internal concrete driver
 

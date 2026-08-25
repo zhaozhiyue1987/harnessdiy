@@ -41,7 +41,7 @@ export * from './message.ts'
 export * from './retry-policy.ts'
 export { BlockAssembler } from './assembler.ts'
 export { callConfigEquals, deepFreeze, isAgentLoopRequest, markAgentLoopRequest } from './call-config.ts'
-export { activeTraceContext, buildTraceparent, captureResponseTraceMeta, consumeResponseTraceMeta, generateSpanId, generateTraceId, generateTraceparent, getTraceContext, traceContextHeaders, withTraceContext } from './trace-context.ts'
+export { activeTraceContext, buildTraceparent, captureGatewayResponseCorrelation, collectGatewayResponseCorrelations, generateSpanId, generateTraceId, generateTraceparent, getTraceContext, traceContextHeaders, withTraceContext } from './trace-context.ts'
 export type { ActiveTraceContext } from './trace-context.ts'
 export type { LlmCallConfig, LlmCallConfigAdapterDefaults } from './call-config.ts'
 

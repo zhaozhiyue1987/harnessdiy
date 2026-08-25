@@ -117,6 +117,8 @@ Supported profile fields are `apiKeyEnv`, `displayName`, `api`, `baseURL`, `mode
 
 The adapter forces pi-ai's SDK `maxRetries` to zero so one `stream()` call makes one provider request. The removed profile fields `maxRetries` and `maxRetryDelayMs` fail load instead of silently multiplying or hiding the separately composed agent-level retry budget. Idle expiry aborts the SDK's stable request signal and surfaces `TIMEOUT`; an earlier caller abort remains `ABORTED`.
 
+When `GenerateOptions.requestTrace` is present, the adapter writes its W3C `traceparent` and optional `X-Agent-*` fields after profile headers, so a deployment cannot replace Harness correlation. pi-ai's common `onResponse` callback parses a valid response `traceparent` or `x-request-id` before content arrives and emits one non-model-visible `trace-meta` stream chunk. Missing or invalid response headers produce no correlation; the outbound trace id is never used as a substitute.
+
 ## Endpoint interrogation
 
 The plugin offers `ctx.llm.registerModelDiscovery('llm-pi-ai', …)`, which answers "which models can this provider serve?" for a route a configuration surface is editing or drafting. It is deliberately *not* a catalog refresh: nothing is stored, and the reply is candidates the surface offers for adoption. `settings.yaml` remains the only thing that decides what a route serves.

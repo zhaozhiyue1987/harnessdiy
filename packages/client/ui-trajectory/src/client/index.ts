@@ -13,6 +13,7 @@ import { createTrajectoryDurationStore } from './duration-store.ts'
 import { en, NS, zh } from './locales.ts'
 import { registerTrajectoryAssistantDefinition } from './trajectory-assistant-definition.ts'
 import { registerTrajectoryCompactionDefinitions } from './trajectory-compaction-definition.ts'
+import { registerTrajectoryGatewayTraceDefinition } from './trajectory-gateway-trace-definition.ts'
 import { registerTrajectoryMessageDefinitions } from './trajectory-message-definitions.ts'
 import { registerTrajectoryRequestHeaderDefinition } from './trajectory-request-header-definition.ts'
 import { registerTrajectoryConversationView } from './trajectory-snapshot-builder.ts'
@@ -39,6 +40,7 @@ export function apply(ctx: Context): void {
   registerTrajectoryAssistantDefinition(ctx)
   registerTrajectoryToolDefinition(ctx)
   registerTrajectoryCompactionDefinitions(ctx)
+  registerTrajectoryGatewayTraceDefinition(ctx)
   registerTrajectoryConversationView(ctx)
   ctx.slots.inject('conversation.view', () => ctx.slots.register({
     name: 'conversation.view',

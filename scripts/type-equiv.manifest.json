@@ -353,7 +353,7 @@
     },
     {
       "doc": "docs/subsystems/llm-streaming.md",
-      "symbol": "TraceMeta",
+      "symbol": "GatewayResponseCorrelation",
       "source": "packages/llm/llm/src/types.ts"
     },
     {

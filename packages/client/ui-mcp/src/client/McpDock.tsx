@@ -25,6 +25,7 @@ export function McpDock({ controller, t }: McpDockProps) {
   const view = useSnapshot(controller)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(null)
 
   useEffect(() => { controller.load() }, [controller])
 
@@ -39,14 +40,35 @@ export function McpDock({ controller, t }: McpDockProps) {
   const unbound = view.catalog.filter(server => !boundNames.has(server.serverName))
   if (view.servers.length === 0 && unbound.length === 0) return null
 
+  const expandedServer = view.servers.find(server => server.serverName === expanded) ?? null
+  // The bound view carries the live tool inventory; the catalog spec adds the
+  // transport endpoint detail for the expanded panel.
+  const expandedSpec = expandedServer === null
+    ? null
+    : view.catalog.find(server => server.serverName === expandedServer.serverName) ?? null
+  const expandedMeta = expandedSpec === null
+    ? ''
+    : expandedSpec.transport === 'stdio'
+      ? `stdio · ${expandedSpec.command}`
+      : `${expandedSpec.transport} · ${expandedSpec.url ?? ''}`
+
   return (
     <div className={css.dock} aria-label={t('dock.label')}>
       {view.status === 'error' ? <span className={css.error}>{`${t('error.load')}: ${view.error}`}</span> : null}
       {error !== null ? <span className={css.error}>{error}</span> : null}
       {view.servers.map(server => (
-        <span key={server.serverName} className={css.chip} title={`${server.tools.length}`}>
-          <span className={css.chipName}>{server.serverName}</span>
-          <span className={css.chipCount}>{server.tools.length}</span>
+        <span key={server.serverName} className={css.chip}>
+          <button
+            type="button"
+            className={css.chipInfo}
+            aria-expanded={expanded === server.serverName}
+            aria-controls={`mcp-dock-detail-${server.serverName}`}
+            title={t('action.detail')}
+            onClick={() => { setExpanded(expanded === server.serverName ? null : server.serverName) }}
+          >
+            <span className={css.chipName}>{server.serverName}</span>
+            <span className={css.chipCount}>{server.tools.length}</span>
+          </button>
           <button
             type="button"
             className={css.chipAction}
@@ -68,6 +90,24 @@ export function McpDock({ controller, t }: McpDockProps) {
           {`+ ${t('action.bind')} ${server.serverName}`}
         </button>
       ))}
+      {expandedServer !== null ? (
+        <div className={css.detail} id={`mcp-dock-detail-${expandedServer.serverName}`}>
+          <div className={css.detailMeta}>{expandedMeta}</div>
+          <div className={css.detailToolsTitle}>{`${t('detail.tools')} (${expandedServer.tools.length})`}</div>
+          {expandedServer.tools.length === 0
+            ? <p className={css.toolsEmpty}>{t('detail.toolsEmpty')}</p>
+            : (
+              <ul className={css.toolList}>
+                {expandedServer.tools.map(tool => (
+                  <li key={tool.publicName} className={css.tool}>
+                    <code className={css.toolName}>{tool.rawName}</code>
+                    <span className={css.toolDesc}>{tool.description}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+        </div>
+      ) : null}
     </div>
   )
 }

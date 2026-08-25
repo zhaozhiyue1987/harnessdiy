@@ -15,7 +15,7 @@ Web 客户端的 MCP 管理 UI：一个承载服务器目录的 settings 段，�
 | `settings.section` | `mcp` | 40 |
 | `conversation.input.dock` | `mcp` | 30 |
 
-settings 段承载目录（list/upsert/delete），对话停靠区针对目录中的服务器绑定和解绑当前会话。
+settings 段承载目录（list/upsert/delete），对话停靠区针对目录中的服务器绑定和解绑当前会话；每个已绑定服务器的 chip 可展开查看端点详情与实时工具清单。
 
 ## 消费的服务
 
@@ -40,3 +40,4 @@ UI 本身不追加任何模型上下文；只有宿主挂载 mcp-client 实例�
 
 - **仅浏览器端**——此插件运行在 web GUI 半侧；ACP 与 headless 界面改经 `mcpManager` RPC 契约管理服务器。
 - **停靠区只呈现宿主的实时清单**——断连或未连接的服务器由持久化目录展示，但其会话工具状态反映 `bound()` 的报告内容。
+- **工具数刷新依赖 MCP 端点可用**——settings 段会为每次刷新建立一次连接并调用 `tools/list`；传输或业务失败会通过操作提示显示，不会写入旧的工具数。

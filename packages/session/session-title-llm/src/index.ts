@@ -5,8 +5,10 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-telemetry'
 import z from '@deepseek-ai/schemastery'
-import { createUserMessage, BlockAssembler, deepFreeze } from '@deepseek-ai/dsh-llm'
+import { AgentRunId, createUserMessage, BlockAssembler, deepFreeze } from '@deepseek-ai/dsh-llm'
+import { randomUUID } from 'node:crypto'
 import type { FinishReason, GenerateOptions, Message } from '@deepseek-ai/dsh-llm'
 import { deadline, MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
 import {
@@ -248,47 +250,62 @@ export async function generateSessionTitleWithLlm(
     source: { kind: 'plugin', plugin: 'dsh-session-title-llm' },
   })]
   const system = systemPrompt(config)
-  using callDeadline = deadline(request.signal, config.timeoutMs, SESSION_TITLE_TIMEOUT_CODE)
-  const options: GenerateOptions = deepFreeze({
-    provider: route.provider,
-    model: route.model,
-    messages,
-    system,
-    maxTokens: config.maxOutputTokens,
-    sessionId: request.session.id,
-    purpose: 'session-title',
-    signal: callDeadline.signal,
-  })
-  request.session.append('session/title-llm-request', {
-    titleProvider,
-    messageSeqs: selectedMessages.map(message => message.seq),
-    route,
-    system,
-    messages,
-    maxTokens: config.maxOutputTokens,
-  })
-  callDeadline.signal.throwIfAborted()
-  const assembler = new BlockAssembler()
-  for await (const chunk of ctx.llm.stream(options)) {
+  const agentRunId = AgentRunId(randomUUID())
+  const generate = async (): Promise<SessionTitleProviderResult> => {
+    using callDeadline = deadline(request.signal, config.timeoutMs, SESSION_TITLE_TIMEOUT_CODE)
+    const outbound = ctx.get('traceTelemetry')?.outbound(agentRunId)
+    const options: GenerateOptions = deepFreeze({
+      provider: route.provider,
+      model: route.model,
+      messages,
+      system,
+      maxTokens: config.maxOutputTokens,
+      sessionId: request.session.id,
+      purpose: 'session-title',
+      signal: callDeadline.signal,
+      ...outbound === undefined ? {} : { requestTrace: outbound },
+    })
+    request.session.append('session/title-llm-request', {
+      titleProvider,
+      messageSeqs: selectedMessages.map(message => message.seq),
+      route,
+      system,
+      messages,
+      maxTokens: config.maxOutputTokens,
+    })
     callDeadline.signal.throwIfAborted()
-    assembler.push(chunk)
+    const assembler = new BlockAssembler()
+    for await (const chunk of ctx.llm.stream(options)) {
+      callDeadline.signal.throwIfAborted()
+      assembler.push(chunk)
+    }
+    callDeadline.signal.throwIfAborted()
+    const terminalError = finishError(assembler.finish)
+    if (terminalError !== undefined) throw terminalError
+    const blocks = assembler.blocks()
+    if (blocks.some(block => block.type === 'tool-call')) {
+      throw new Error('session-title-llm: title output must contain text only')
+    }
+    const text = blocks
+      .filter((block): block is Extract<(typeof blocks)[number], { type: 'text' }> => block.type === 'text')
+      .map(block => block.text)
+      .join(' ')
+    const title = normalizeSessionTitle(text, Number.MAX_SAFE_INTEGER)
+    if (title.length === 0) throw new Error('session-title-llm: title model produced no text')
+    return {
+      title,
+      messageSeqs: selectedMessages.map(message => message.seq),
+      model: route,
+    }
   }
-  callDeadline.signal.throwIfAborted()
-  const terminalError = finishError(assembler.finish)
-  if (terminalError !== undefined) throw terminalError
-  const blocks = assembler.blocks()
-  if (blocks.some(block => block.type === 'tool-call')) {
-    throw new Error('session-title-llm: title output must contain text only')
-  }
-  const text = blocks
-    .filter((block): block is Extract<(typeof blocks)[number], { type: 'text' }> => block.type === 'text')
-    .map(block => block.text)
-    .join(' ')
-  const title = normalizeSessionTitle(text, Number.MAX_SAFE_INTEGER)
-  if (title.length === 0) throw new Error('session-title-llm: title model produced no text')
-  return {
-    title,
-    messageSeqs: selectedMessages.map(message => message.seq),
-    model: route,
-  }
+  const telemetry = ctx.get('traceTelemetry')
+  return telemetry === undefined
+    ? generate()
+    : telemetry.withinSpan(
+      { name: 'session.title', root: true, attributes: { 'session.id': String(request.session.id) } },
+      () => telemetry.withinSpan(
+        { name: 'gen_ai.chat', attributes: { 'gen_ai.operation.name': 'chat' } },
+        () => telemetry.withinSpan({ name: 'llm.client' }, generate),
+      ),
+    )
 }

@@ -2,6 +2,7 @@ import { Context } from '@deepseek-ai/cordis'
 import { describe, expect, it, vi } from 'vitest'
 import LlmRuntime, { createUserMessage, CallId, isAgentLoopRequest, LlmAdapter  } from '@deepseek-ai/dsh-llm'
 import type { FinishReason, GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
+import TraceTelemetry, { type ActiveTraceSpan, type OutboundTraceContext, type TraceSpanOptions } from '@deepseek-ai/dsh-telemetry'
 import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { SessionTitleProviderId } from '@deepseek-ai/dsh-session-title'
 import type { SessionTitleProviderRequest } from '@deepseek-ai/dsh-session-title'
@@ -56,6 +57,36 @@ class DelayedSuccessAdapter extends LlmAdapter {
   override async * stream(): AsyncIterable<StreamChunk> {
     await new Promise<void>(resolve => setTimeout(resolve, this.delayMs))
     yield * SCRIPT
+  }
+}
+
+/** Minimal local trace provider for the title request regression. */
+class RecordingTraceTelemetry extends TraceTelemetry {
+  readonly names: string[] = []
+  private activeSpan: ActiveTraceSpan | undefined
+  private ordinal = 0
+
+  override active(): ActiveTraceSpan | undefined { return this.activeSpan }
+
+  override identity() { return { agentPlatform: 'harness', agentApplicationId: 'title-test' } }
+
+  override outbound<TAgentRunId extends string>(agentRunId: TAgentRunId): OutboundTraceContext<TAgentRunId> | undefined {
+    const active = this.active()
+    return active === undefined ? undefined : { ...active, agentRunId, ...this.identity() }
+  }
+
+  override async withinSpan<T>(options: TraceSpanOptions, operation: () => Promise<T>): Promise<T> {
+    this.names.push(options.name)
+    const previous = this.activeSpan
+    const ordinal = ++this.ordinal
+    const traceId = options.root === true ? ordinal.toString(16).padStart(32, '0') : previous?.traceId ?? ordinal.toString(16).padStart(32, '0')
+    this.activeSpan = { traceId, spanId: ordinal.toString(16).padStart(16, '0'), traceparent: '' }
+    this.activeSpan.traceparent = `00-${this.activeSpan.traceId}-${this.activeSpan.spanId}-01`
+    try {
+      return await operation()
+    } finally {
+      this.activeSpan = previous
+    }
   }
 }
 
@@ -171,6 +202,18 @@ describe('generateSessionTitleWithLlm', () => {
         messages: options.messages,
         maxTokens: 32,
       })
+  })
+
+  it('creates a traced auxiliary title request instead of leaving it gateway-created', async () => {
+    const { ctx, adapter } = await withScript(SCRIPT)
+    await ctx.plugin(RecordingTraceTelemetry)
+    const providerRequest = request(ctx)
+
+    await generateSessionTitleWithLlm(ctx, resolveSessionTitleLlmConfig(CONFIG), providerRequest, providerRequest.messages, TITLE_PROVIDER)
+
+    expect((ctx.traceTelemetry as RecordingTraceTelemetry).names).toEqual(['session.title', 'gen_ai.chat', 'llm.client'])
+    expect(adapter.requests[0]?.requestTrace).toMatchObject({ agentPlatform: 'harness', agentApplicationId: 'title-test' })
+    expect(adapter.requests[0]?.requestTrace?.agentRunId).not.toBe(providerRequest.session.id)
   })
 
   it('uses paired explicit overrides and bounds the final framed input before model dispatch', async () => {

@@ -42,6 +42,9 @@
       "path": "../../settings/settings"
     },
     {
+      "path": "../../telemetry/telemetry"
+    },
+    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

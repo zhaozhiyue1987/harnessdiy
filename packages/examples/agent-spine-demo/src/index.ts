@@ -94,6 +94,10 @@ export interface Config {
   agents?: AgentLoopConfig['agents']
   /** Agent-loop concurrency cap; `1` is serial. */
   maxParallelToolCalls?: AgentLoopConfig['maxParallelToolCalls']
+  /** Deployment platform written to traced outbound gateway requests. */
+  agentPlatform?: AgentLoopConfig['agentPlatform']
+  /** Deployment application identifier written to traced outbound gateway requests. */
+  agentApplicationId?: AgentLoopConfig['agentApplicationId']
   /** Whether the system prompt includes the fixed Harness identity (default true). */
   includeHarnessIdentity?: SystemPromptConfig['includeHarnessIdentity']
   /** Whether model history includes dynamic runtime-context snapshots (default true). */

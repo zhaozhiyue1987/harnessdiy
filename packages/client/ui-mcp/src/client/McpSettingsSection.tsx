@@ -36,6 +36,7 @@ export function McpSettingsSection({ controller, t }: McpSettingsSectionProps) {
   const [args, setArgs] = useState('')
   const [busy, setBusy] = useState(false)
   const [action, setAction] = useState<ActionState | null>(null)
+  const [fetching, setFetching] = useState<string | null>(null)
 
   useEffect(() => { controller.load() }, [controller])
 
@@ -77,6 +78,15 @@ export function McpSettingsSection({ controller, t }: McpSettingsSectionProps) {
     }
   }
 
+  const refreshTools = async (serverName: string): Promise<void> => {
+    setFetching(serverName)
+    const result = await controller.fetchToolCount(serverName)
+    setFetching(null)
+    if (!result.ok) {
+      setAction({ message: `${t('error.action')}: ${result.message}`, seq: Date.now() })
+    }
+  }
+
   return (
     <section className={css.page} aria-label={t('nav')}>
       <p className={css.description}>{t('section.description')}</p>
@@ -88,22 +98,39 @@ export function McpSettingsSection({ controller, t }: McpSettingsSectionProps) {
         ? <p className={css.empty}>{t('section.empty')}</p>
         : (
           <ul className={css.list}>
-            {view.servers.map(server => (
-              <li key={server.serverName} className={css.row}>
-                <span className={css.rowName}>{server.serverName}</span>
-                <span className={css.rowMeta}>
-                  {server.transport}
-                  {server.transport === 'stdio' ? ` · ${server.command}` : ` · ${server.url ?? ''}`}
-                </span>
-                <button
-                  type="button"
-                  className={css.danger}
-                  onClick={() => void remove(server.serverName)}
-                >
-                  {t('action.remove')}
-                </button>
-              </li>
-            ))}
+            {view.servers.map((server) => {
+              const toolsCount = view.toolCounts.get(server.serverName)
+              return (
+                <li key={server.serverName} className={css.row}>
+                  <span className={css.rowName}>{server.serverName}</span>
+                  <span className={css.rowMeta}>
+                    {server.transport}
+                    {server.transport === 'stdio' ? ` · ${server.command}` : ` · ${server.url ?? ''}`}
+                    {toolsCount !== undefined
+                      ? <span className={css.toolsCount}>{` · ${toolsCount} ${t('detail.tools')}`}</span>
+                      : null}
+                  </span>
+                  <span className={css.rowActions}>
+                    <button
+                      type="button"
+                      className={css.secondary}
+                      disabled={fetching !== null}
+                      onClick={() => void refreshTools(server.serverName)}
+                      title={t('action.refreshTools')}
+                    >
+                      {fetching === server.serverName ? t('action.fetching') : t('action.refreshTools')}
+                    </button>
+                    <button
+                      type="button"
+                      className={css.danger}
+                      onClick={() => void remove(server.serverName)}
+                    >
+                      {t('action.remove')}
+                    </button>
+                  </span>
+                </li>
+              )
+            })}
           </ul>
         )}
 

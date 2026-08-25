@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { Context } from '@deepseek-ai/cordis'
-import LlmRuntime, { createUserMessage, CallId, LlmError, StreamChunk  } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, CallId, GatewayTraceId, getTraceContext, LlmError, StreamChunk  } from '@deepseek-ai/dsh-llm'
+import TraceTelemetry, { type ActiveTraceSpan, type OutboundTraceContext, type TraceSpanOptions } from '@deepseek-ai/dsh-telemetry'
 import SessionStore, { SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineContentToolFixture } from '@deepseek-ai/dsh-tools'
@@ -9,18 +11,52 @@ import AgentRegistry, { type Agent } from '@deepseek-ai/dsh-agent'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { MockAdapter, maxTokensResponse, textResponse, toolCallResponse } from './mock-adapter.ts'
 
+/** In-memory telemetry provider that exposes the loop's local span nesting. */
+class RecordingTraceTelemetry extends TraceTelemetry {
+  readonly names: string[] = []
+  readonly outboundContexts: OutboundTraceContext[] = []
+  readonly spans: { options: TraceSpanOptions; span: ActiveTraceSpan }[] = []
+  private readonly activeStore = new AsyncLocalStorage<ActiveTraceSpan>()
+  private sequence = 0
+
+  override active(): ActiveTraceSpan | undefined { return this.activeStore.getStore() }
+
+  override identity() { return { agentPlatform: 'harness', agentApplicationId: 'test-app' } }
+
+  override outbound<TAgentRunId extends string>(agentRunId: TAgentRunId): OutboundTraceContext<TAgentRunId> | undefined {
+    const active = this.active()
+    if (active === undefined) return undefined
+    const outbound = { ...active, agentRunId, ...this.identity() }
+    this.outboundContexts.push(outbound)
+    return outbound
+  }
+
+  override withinSpan<T>(options: TraceSpanOptions, operation: () => Promise<T>): Promise<T> {
+    this.names.push(options.name)
+    const ordinal = ++this.sequence
+    const span = {
+      traceId: options.root === true ? ordinal.toString(16).padStart(32, '0') : this.active()?.traceId ?? ordinal.toString(16).padStart(32, '0'),
+      spanId: ordinal.toString(16).padStart(16, '0'),
+      traceparent: '',
+    }
+    span.traceparent = `00-${span.traceId}-${span.spanId}-01`
+    this.spans.push({ options, span })
+    return this.activeStore.run(span, operation)
+  }
+}
+
 function driverDone(agent: Agent): Promise<void> {
   return (agent as Agent & { done: Promise<void> }).done
 }
 
-async function harness(adapter: MockAdapter, persona = '') {
+async function harness(adapter: MockAdapter, persona = '', traceConfig: { agentPlatform?: string; agentApplicationId?: string } = {}) {
   const ctx = new Context()
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(SessionStore)
   await ctx.plugin(SystemPrompt, { persona })
   await ctx.plugin(ToolRuntime)
   await ctx.plugin(AgentRegistry)
-  await ctx.plugin(AgentLoop, { agents: [] })
+  await ctx.plugin(AgentLoop, { agents: [], ...traceConfig })
   ctx.llm.registerAdapter(['mock'], adapter)
   return ctx
 }
@@ -94,6 +130,7 @@ describe('agent loop', () => {
       })
     })
     await started.promise
+    expect(() => agent.runMaintenance(async () => undefined)).toThrow(/already has active work/)
 
     send(agent, 'discard this wakeup') // latched behind the live maintenance task
     agent.cancel({ kind: 'user' }) // drops the queue and the latch, aborts maintenance
@@ -230,6 +267,121 @@ describe('agent loop', () => {
     const types = agent.session.events.map(e => e.type)
     expect(types).toContain('tool/call')
     expect(types).toContain('tool/result')
+  })
+
+  it('keeps the local model request context for its tool calls', async () => {
+    const responseTraceparent = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`
+    const adapter = new MockAdapter([
+      [
+        {
+          type: 'trace-meta',
+          traceMeta: {
+            responseTraceparent,
+            traceId: GatewayTraceId('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+            receivedAt: '2026-08-24T00:00:00.000Z',
+          },
+        },
+        ...toolCallResponse('trace-call', 'capture-trace', {}),
+      ],
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    const toolTraceparents: (string | undefined)[] = []
+    ctx.tools.register(defineContentToolFixture({
+      name: 'capture-trace',
+      description: 'records the active request tracing context',
+      parameters: {},
+      async execute() {
+        toolTraceparents.push(getTraceContext()?.traceparent)
+        return [{ type: 'text', text: 'captured' }]
+      },
+    }))
+    const agent = ctx.agentLoop.create(SessionId('tool-trace-parent'), { provider: 'mock', model: 'mock' })
+
+    send(agent, 'call the trace capture tool')
+    await waitForIdle(ctx, agent)
+
+    expect(toolTraceparents).toEqual([adapter.requests[0]?.requestTrace?.traceparent])
+    expect(toolTraceparents).not.toEqual([responseTraceparent])
+  })
+
+  it('uses deployment trace identity without an OTLP provider', async () => {
+    const adapter = new MockAdapter([textResponse('done')])
+    const ctx = await harness(adapter, '', { agentPlatform: 'harness', agentApplicationId: 'fallback-app' })
+    const agent = ctx.agentLoop.create(SessionId('fallback-trace'), { provider: 'mock', model: 'mock' })
+
+    send(agent, 'use the fallback trace context')
+    await waitForIdle(ctx, agent)
+
+    expect(adapter.requests[0]?.requestTrace).toMatchObject({ agentPlatform: 'harness', agentApplicationId: 'fallback-app' })
+    expect(adapter.requests[0]?.requestTrace?.agentRunId).not.toBe(agent.session.id)
+  })
+
+  it('creates local agent, model, and tool spans while preserving one run trace', async () => {
+    const adapter = new MockAdapter([
+      toolCallResponse('trace-tree-call', 'trace-tree-tool', {}),
+      textResponse('done'),
+    ])
+    const ctx = await harness(adapter)
+    await ctx.plugin(RecordingTraceTelemetry)
+    const telemetry = ctx.traceTelemetry as RecordingTraceTelemetry
+    ctx.tools.register(defineContentToolFixture({
+      name: 'trace-tree-tool',
+      description: 'completes the test trace tree',
+      parameters: {},
+      async execute() { return [{ type: 'text', text: 'ok' }] },
+    }))
+    const agent = ctx.agentLoop.create(SessionId('local-trace-tree'), { provider: 'mock', model: 'mock' })
+
+    send(agent, 'make a tool call')
+    await waitForIdle(ctx, agent)
+
+    expect(telemetry.names).toEqual([
+      'agent.run', 'gen_ai.chat', 'llm.client', 'mcp.tools.call', 'gen_ai.chat', 'llm.client',
+    ])
+    expect(telemetry.spans.map(({ span }) => span.traceId)).toEqual(Array(6).fill(telemetry.spans[0]?.span.traceId))
+    expect(telemetry.spans[0]?.options).toMatchObject({
+      root: true,
+      attributes: {
+        'agent.id': agent.id,
+        'agent.platform': 'harness',
+        'agent.application_id': 'test-app',
+      },
+    })
+    expect(telemetry.outboundContexts).toHaveLength(2)
+    expect(telemetry.outboundContexts.map(context => context.traceId)).toEqual([
+      telemetry.outboundContexts[0]?.traceId,
+      telemetry.outboundContexts[0]?.traceId,
+    ])
+    expect(telemetry.outboundContexts.map(context => context.agentRunId)).toEqual([
+      telemetry.outboundContexts[0]?.agentRunId,
+      telemetry.outboundContexts[0]?.agentRunId,
+    ])
+    expect(telemetry.outboundContexts[0]?.agentRunId).not.toBe(agent.session.id)
+    expect(adapter.requests.map(request => request.requestTrace?.traceparent)).toEqual(
+      telemetry.outboundContexts.map(context => context.traceparent),
+    )
+  })
+
+  it('creates a fresh run id and root trace for the next agent execution', async () => {
+    const adapter = new MockAdapter([textResponse('first'), textResponse('second')])
+    const ctx = await harness(adapter)
+    await ctx.plugin(RecordingTraceTelemetry)
+    const telemetry = ctx.traceTelemetry as RecordingTraceTelemetry
+    const agent = ctx.agentLoop.create(SessionId('reused-session'), { provider: 'mock', model: 'mock' })
+
+    send(agent, 'first execution')
+    await waitForIdle(ctx, agent)
+    send(agent, 'second execution')
+    await waitForIdle(ctx, agent)
+
+    const roots = telemetry.spans.filter(({ options }) => options.name === 'agent.run')
+    expect(roots).toHaveLength(2)
+    expect(roots.map(({ span }) => span.traceId)).not.toEqual([roots[0]?.span.traceId, roots[0]?.span.traceId])
+    const runIds = telemetry.outboundContexts.map(context => context.agentRunId)
+    expect(runIds).toHaveLength(2)
+    expect(runIds).not.toEqual([runIds[0], runIds[0]])
+    expect(runIds).not.toContain(agent.session.id)
   })
 
   it('renders harness identity, then the persona, then tool guidance — with {{variables}} resolved', async () => {

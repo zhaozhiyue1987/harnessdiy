@@ -33,6 +33,7 @@ import type {
 } from '@earendil-works/pi-ai'
 import {
   attributionHeaders,
+  captureGatewayResponseCorrelation,
   contentHasImage,
   LlmAdapter,
   LlmError,
@@ -40,6 +41,7 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
+  GatewayResponseCorrelation,
   LlmModelInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
@@ -169,12 +171,25 @@ function reasoningInfo(
 }
 
 /** Merge deployment headers while removing case-insensitive attribution collisions. */
-function requestHeaders(headers: Readonly<Record<string, string>> | undefined): Record<string, string> {
-  const attribution = attributionHeaders()
-  const reserved = new Set(Object.keys(attribution).map(name => name.toLowerCase()))
+function requestHeaders(
+  headers: Readonly<Record<string, string>> | undefined,
+  requestTrace: GenerateOptions['requestTrace'],
+): Record<string, string> {
+  const harnessHeaders: Record<string, string> = {
+    ...attributionHeaders(),
+    ...requestTrace === undefined
+      ? {}
+      : {
+        traceparent: requestTrace.traceparent,
+        ...requestTrace.agentRunId === undefined ? {} : { 'x-agent-run-id': requestTrace.agentRunId },
+        ...requestTrace.agentPlatform === undefined ? {} : { 'x-agent-platform': requestTrace.agentPlatform },
+        ...requestTrace.agentApplicationId === undefined ? {} : { 'x-agent-application-id': requestTrace.agentApplicationId },
+      },
+  }
+  const reserved = new Set(Object.keys(harnessHeaders).map(name => name.toLowerCase()))
   return {
     ...Object.fromEntries(Object.entries(headers ?? {}).filter(([name]) => !reserved.has(name.toLowerCase()))),
-    ...attribution,
+    ...harnessHeaders,
   }
 }
 
@@ -310,18 +325,23 @@ export class PiAiAdapter extends LlmAdapter {
       const context = attachments === undefined
         ? toPiContext(options)
         : await toPiContext(options, attachments)
+      let traceMeta: GatewayResponseCorrelation | undefined
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
         signal: watchdog.signal,
-        // Profile headers are deployment-owned; attribution names are
-        // Harness-owned and therefore win collisions.
-        headers: requestHeaders(profile.headers),
+        // Profile headers are deployment-owned; Harness attribution and request
+        // trace names are reserved so one route cannot break correlation.
+        headers: requestHeaders(profile.headers, options.requestTrace),
+        onResponse(response) {
+          traceMeta = captureGatewayResponseCorrelation(new Headers(response.headers))
+        },
       })
       const iterator = toStreamChunks(events, model.contextWindow)[Symbol.asyncIterator]()
       let exhausted = false
+      let emittedTraceMeta = false
       try {
         while (true) {
           const result = await watchdog.next(iterator)
@@ -330,6 +350,10 @@ export class PiAiAdapter extends LlmAdapter {
           if (result.done) {
             exhausted = true
             return
+          }
+          if (!emittedTraceMeta) {
+            emittedTraceMeta = true
+            if (traceMeta !== undefined) yield { type: 'trace-meta', traceMeta }
           }
           yield result.value
         }

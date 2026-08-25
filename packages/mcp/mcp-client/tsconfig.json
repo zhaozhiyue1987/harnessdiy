@@ -19,6 +19,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../telemetry/telemetry"
+    },
+    {
       "path": "../../core/tools"
     },
     {

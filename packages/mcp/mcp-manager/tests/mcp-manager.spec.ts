@@ -314,3 +314,42 @@ describe('session-scoped binding', () => {
     if (!bound.ok) expect(bound.code).toBe('bind-failed')
   })
 })
+
+// ---- Server tools query ----
+
+describe('server tools query', () => {
+  it('returns tool count for a configured server', async () => {
+    const ctx = await mount()
+    await manager(ctx).upsert({ server: { ...stdioServer } })
+    mockListTools.mockResolvedValue({
+      tools: [
+        { name: 'read', description: 'Read a file', inputSchema: { type: 'object' } },
+        { name: 'write', description: 'Write a file', inputSchema: { type: 'object' } },
+        { name: 'list', description: 'List files', inputSchema: { type: 'object' } },
+      ],
+    })
+
+    const result = await manager(ctx).serverTools({ serverName: 'demo' })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.serverName).toBe('demo')
+      expect(result.value.toolsCount).toBe(3)
+    }
+  })
+
+  it('answers unknown-server for an unconfigured name', async () => {
+    const ctx = await mount()
+    const result = await manager(ctx).serverTools({ serverName: 'nonexistent' })
+    expect(result).toEqual({ ok: false, code: 'unknown-server', message: expect.any(String) as unknown })
+  })
+
+  it('answers bind-failed when the connection fails', async () => {
+    const ctx = await mount()
+    await manager(ctx).upsert({ server: { ...stdioServer } })
+    mockConnect.mockRejectedValue(new Error('ECONNREFUSED'))
+
+    const result = await manager(ctx).serverTools({ serverName: 'demo' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('bind-failed')
+  })
+})

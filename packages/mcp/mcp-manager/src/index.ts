@@ -14,12 +14,15 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import {
   apply as applyMcpClient,
   connectionHandle,
+  createTransport,
   DEFAULT_TOOL_CALL_TIMEOUT_MS,
   publicToolName,
   RECONNECT_DEFAULTS,
   SERVER_NAME_PATTERN,
   type Config as McpClientConfig,
 } from '@deepseek-ai/dsh-mcp-client'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { ListToolsResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import { settingsNamespace, type SettingsScope } from '@deepseek-ai/dsh-settings'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -42,6 +45,8 @@ import {
   type McpRemoveRequest,
   type McpRemoveResult,
   type McpServerSpec,
+  type McpServerToolsRequest,
+  type McpServerToolsResult,
   type McpToolInfo,
   type McpUnbindRequest,
   type McpUnbindResult,
@@ -324,6 +329,41 @@ export class McpManagerService extends TypertRemoteService {
       return ok({ servers })
     } catch (error) {
       return this.failure('internal', error)
+    }
+  }
+
+  /**
+   * Query one managed server and return its current tool count.
+   * Connects to the server, lists its tools, then disconnects.
+   * Used by the settings page to show tool count without binding.
+   * @param request - The catalog `serverName` to query.
+   * @returns The server name and its tools count.
+   */
+  @Remote('serverTools')
+  async serverTools(request: McpServerToolsRequest): Promise<McpServerToolsResult> {
+    try {
+      const server = this.requireCatalog().get().servers.find(entry => entry.serverName === request.serverName)
+      if (server === undefined) {
+        return rejected('unknown-server', `mcp-manager: server "${request.serverName}" is not configured`)
+      }
+      const config = toClientConfig(McpManagerService.resolveSpec(server), request.serverName)
+      const client = new Client(
+        { name: 'dsh-mcp-client', version: '0.0.1' },
+        { capabilities: {} },
+      )
+      try {
+        const transport = createTransport(config)
+        await client.connect(transport)
+        const result = await client.request(
+          { method: 'tools/list' },
+          ListToolsResultSchema,
+        )
+        return ok({ serverName: request.serverName, toolsCount: result.tools.length })
+      } finally {
+        await client.close()
+      }
+    } catch (error) {
+      return this.failure('bind-failed', error)
     }
   }
 

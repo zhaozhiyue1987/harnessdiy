@@ -230,7 +230,7 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
  * the model output and its accounting travel together (there is no separate
  * usage record). `usage` is absent when the adapter reported none.
  */
-'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage }
+'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; traceMeta?: GatewayResponseCorrelation }
 ```
 
 类型：[TokenUsage](subsystems/llm-streaming.md)
@@ -406,6 +406,23 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
 ```
 
 来源：[`packages/feedback/command-feedback/src/index.ts:62`](../packages/feedback/command-feedback/src/index.ts)
+
+### `gateway/*`
+
+<a id="gatewaytrace--log-only"></a>
+
+#### `gateway/trace` — log-only
+
+```ts persistence-catalog
+/**
+ * Sanitized observations retrieved from Higress after a response supplied
+ * a request id or W3C trace id. This event is log-only and writers append
+ * it with `ignorable: true`.
+ */
+'gateway/trace': { turn: number; step: number } & GatewayTraceObservation
+```
+
+来源：[`packages/gateway/gateway-trace/src/types.ts:25`](../packages/gateway/gateway-trace/src/types.ts)
 
 ### `goal/*`
 
@@ -812,6 +829,8 @@ export type SessionEvent<T extends SessionEventType = SessionEventType> = {
   message: ToolResultMessage
   error?: { name: string; code: string }
   meta?: JsonValue
+  /** Gateway response correlations captured while this tool call was dispatched. */
+  gatewayResponseCorrelations?: GatewayResponseCorrelation[]
 }
 ```
 

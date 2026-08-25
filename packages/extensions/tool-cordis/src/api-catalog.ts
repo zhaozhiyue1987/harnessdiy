@@ -642,6 +642,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'gatewayTrace',
+    summary: 'Abstract gateway-trace service.',
+    description: 'Abstract gateway-trace service. `query` is a pure reverse-query: it resolves credentials, performs the gateway HTTP call, and returns the per-stage detail. The provider package orchestrates the listen → `query` → append flow that reflects the detail into a `gateway/trace` session event anchored to the stage; `query` itself appends nothing and holds no session context, which is why `GatewayTraceObservation` excludes the session-side `turn`/`step`. The service degrades to returning `undefined` when the gateway is unreachable or no credential is configured — no data, no crash. Load one implementation per context as `ctx.gatewayTrace`.',
+    methods: [
+      {
+        signature: 'abstract query(correlation: GatewayTraceLookup): Promise<GatewayTraceObservation | undefined>',
+        description: 'Reverse-query the gateway from either independent response correlation key.',
+        parameters: [{ name: 'correlation', description: 'exact request id and/or W3C trace id from the response.' }],
+        returns: 'sanitized observation, or `undefined` when no usable key or data exists.',
+      },
+    ],
+  },
+  {
     key: 'goals',
     summary: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
     description: 'Goal service (`ctx.goals`) backed exclusively by the owning session log.',
@@ -1940,6 +1953,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'traceTelemetry',
+    summary: 'Optional local tracing provider.',
+    description: 'Optional local tracing provider. Consumers obtain this service with `ctx.get(\'traceTelemetry\')`, because a normal Harness deployment may not load any telemetry backend.',
+    methods: [
+      {
+        signature: 'abstract active(): ActiveTraceSpan | undefined',
+        description: 'Read the active local span, if the caller runs inside one.',
+        parameters: [],
+        returns: 'current W3C span identity, or `undefined` outside telemetry work.',
+      },
+      {
+        signature: 'abstract identity(): TraceAgentIdentity',
+        description: 'Read the deployment identity used for local Agent spans and gateway headers.',
+        parameters: [],
+        returns: 'configured platform and application identifiers.',
+      },
+      {
+        signature: 'abstract outbound<TAgentRunId extends string>(agentRunId: TAgentRunId): OutboundTraceContext<TAgentRunId> | undefined',
+        description: 'Build gateway headers from the active local span and the configured Harness identity.',
+        parameters: [{ name: 'agentRunId', description: 'stable id of the agent or auxiliary operation.' }],
+        returns: 'context for one outbound request, or `undefined` outside a span.',
+      },
+      {
+        signature: 'abstract withinSpan<T>(options: TraceSpanOptions, operation: () => Promise<T>): Promise<T>',
+        description: 'Run work under a newly created local span. Rejections are recorded by the provider before they reach the caller.',
+        parameters: [{ name: 'options', description: 'semantic name, attributes, and root policy for the span.' }, { name: 'operation', description: 'work that inherits the new span through async calls.' }],
+        returns: 'the operation result.',
+      },
+    ],
+  },
+  {
     key: 'typert',
     summary: 'Registry of generated schemas, package reflection, invocations, and Remote dependency providers.',
     description: 'Registry of generated schemas, package reflection, invocations, and Remote dependency providers.',
@@ -2610,6 +2654,10 @@ export const EVENT_API: readonly EventApiEntry[] = [
 /** Shapes of every exported type the Service and Event signatures reference (transitively), sorted by name. */
 export const TYPE_API: readonly TypeApiEntry[] = [
   {
+    name: 'ActiveTraceSpan',
+    declaration: 'export interface ActiveTraceSpan {\n    traceId: string;\n    spanId: string;\n    traceparent: string;\n}',
+  },
+  {
     name: 'AdapterRegistrationHandle',
     declaration: 'export interface AdapterRegistrationHandle {\n    (): void;\n    replace(providers: string[]): void;\n}',
   },
@@ -2636,6 +2684,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'AgentPreset',
     declaration: 'export interface AgentPreset {\n    readonly id: string;\n    readonly trust: PresetTrust;\n    readonly path: string;\n    readonly name?: string;\n    readonly description?: string;\n    readonly order?: number;\n    readonly broken?: string;\n}',
+  },
+  {
+    name: 'AgentRunId',
+    declaration: 'export type AgentRunId = Branded<\'AgentRunId\'>;',
   },
   {
     name: 'AgentSetup',
@@ -3090,8 +3142,40 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FsWriteOutcome {\n    operation: \'create\' | \'update\';\n    version: FsVersion;\n    before: string | null;\n    after: string;\n}',
   },
   {
+    name: 'GatewayRequestId',
+    declaration: 'export type GatewayRequestId = Branded<\'GatewayRequestId\'>;',
+  },
+  {
+    name: 'GatewayResponseCorrelation',
+    declaration: 'export interface GatewayResponseCorrelation {\n    responseTraceparent?: string;\n    traceId?: GatewayTraceId;\n    requestId?: GatewayRequestId;\n    receivedAt: string;\n}',
+  },
+  {
+    name: 'GatewaySpanId',
+    declaration: 'export type GatewaySpanId = Branded<\'GatewaySpanId\'>;',
+  },
+  {
+    name: 'GatewayTraceId',
+    declaration: 'export type GatewayTraceId = Branded<\'GatewayTraceId\'>;',
+  },
+  {
+    name: 'GatewayTraceLookup',
+    declaration: 'export interface GatewayTraceLookup {\n    requestId?: GatewayRequestId;\n    traceId?: GatewayTraceId;\n}',
+  },
+  {
+    name: 'GatewayTraceObservation',
+    declaration: 'export interface GatewayTraceObservation {\n    traceId: GatewayTraceId;\n    requestId?: GatewayRequestId;\n    source: \'tempo\' | \'reconstructed\';\n    observation: {\n        eventType?: string;\n        routeId?: string;\n        modelId?: string;\n        mcpServiceId?: string;\n        statusCode?: number;\n        durationMs?: number;\n        observedAt?: string;\n    };\n    spans: GatewayTraceSpan[];\n    timing: GatewayTraceTiming;\n}',
+  },
+  {
+    name: 'GatewayTraceSpan',
+    declaration: 'export interface GatewayTraceSpan {\n    name: string;\n    spanId?: GatewaySpanId;\n    parentSpanId?: GatewaySpanId;\n    requestId?: GatewayRequestId;\n    startedAtMs?: number;\n    durationMs?: number;\n    attributes: Record<string, string | number>;\n}',
+  },
+  {
+    name: 'GatewayTraceTiming',
+    declaration: 'export interface GatewayTraceTiming {\n    actualDurationMs?: number;\n    accumulatedDurationMs?: number;\n    longestSpanDurationMs?: number;\n}',
+  },
+  {
     name: 'GenerateOptions',
-    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n}',
+    declaration: 'export interface GenerateOptions {\n    provider: string;\n    model: string;\n    reasoningEffort?: ReasoningEffortId;\n    messages: Message[];\n    system?: string;\n    tools?: ToolSchema[];\n    temperature?: number;\n    maxTokens?: number;\n    stop?: string[];\n    signal?: AbortSignal;\n    sessionId?: Branded<\'SessionId\'>;\n    purpose?: \'compaction\' | \'session-title\';\n    requestTrace?: RequestTrace;\n}',
   },
   {
     name: 'GenericCallView',
@@ -3474,6 +3558,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface OneShotSubagentDescriptorData extends SubagentDescriptorBase {\n    readonly mode: \'one-shot\';\n    readonly label?: string;\n}',
   },
   {
+    name: 'OutboundTraceContext',
+    declaration: 'export interface OutboundTraceContext<TAgentRunId extends string = string> extends ActiveTraceSpan, TraceAgentIdentity {\n    agentRunId: TAgentRunId;\n}',
+  },
+  {
     name: 'PermissionSelect',
     declaration: 'export interface PermissionSelect {\n    options: PresetOption[];\n    currentValue: string;\n}',
   },
@@ -3592,6 +3680,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RequestRunOutcome',
     declaration: 'export type RequestRunOutcome = \'approved\' | \'completed\' | \'rejected\' | \'cancelled\' | \'failed\';',
+  },
+  {
+    name: 'RequestTrace',
+    declaration: 'export interface RequestTrace {\n    traceparent: string;\n    agentRunId?: AgentRunId;\n    agentPlatform?: string;\n    agentApplicationId?: string;\n}',
   },
   {
     name: 'ResolvedAlwaysRetryPolicy',
@@ -3731,7 +3823,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'SessionEventMap',
-    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'assistant/chunk\': {\n        turn: number;\n        step: number;\n        chunk: StreamChunk;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        usage?: TokenUsage;\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: CallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n    };\n    \'todo/write\': {\n        todos: TodoItem[];\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n    };\n    \'request/context\': RequestContext;\n    \'session/end-seed\': Record<string, never>;\n}',
+    declaration: 'export interface SessionEventMap {\n    \'turn/start\': {\n        turn: number;\n    };\n    \'turn/end\': {\n        turn: number;\n        reason: TurnEndReason;\n    };\n    \'step/start\': {\n        turn: number;\n        step: number;\n    };\n    \'step/end\': {\n        turn: number;\n        step: number;\n    };\n    \'user/message\': UserMessage;\n    \'assistant/chunk\': {\n        turn: number;\n        step: number;\n        chunk: StreamChunk;\n    };\n    \'assistant/message\': {\n        turn: number;\n        step: number;\n        message: AssistantMessage;\n        usage?: TokenUsage;\n        traceMeta?: GatewayResponseCorrelation;\n    };\n    \'tool/call\': {\n        turn: number;\n        step: number;\n        callId: CallId;\n        name: string;\n        arguments: string;\n    };\n    \'tool/result\': {\n        turn: number;\n        step: number;\n        message: ToolResultMessage;\n        error?: {\n            name: string;\n            code: string;\n        };\n        meta?: JsonValue;\n        gatewayResponseCorrelations?: GatewayResponseCorrelation[];\n    };\n    \'todo/write\': {\n        todos: TodoItem[];\n    };\n    \'request/header\': {\n        header: EpochHeader;\n        reason: RequestHeaderReason;\n    };\n    \'request/context\': RequestContext;\n    \'session/end-seed\': Record<string, never>;\n}',
   },
   {
     name: 'SessionEventMetadataFilter',
@@ -4091,7 +4183,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'StreamChunk',
-    declaration: 'export type StreamChunk = {\n    type: \'block-start\';\n    index: number;\n    blockType: ContentBlockType;\n} | {\n    type: \'text-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'reasoning-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'tool-call-delta\';\n    index: number;\n    id: CallId;\n    name?: string;\n    argumentsDelta: string;\n} | {\n    type: \'block-end\';\n    index: number;\n    block: ContentBlock;\n} | {\n    type: \'usage\';\n    usage: TokenUsage;\n} | {\n    type: \'finish\';\n    reason: FinishReason;\n    replayState?: unknown;\n};',
+    declaration: 'export type StreamChunk = {\n    type: \'block-start\';\n    index: number;\n    blockType: ContentBlockType;\n} | {\n    type: \'text-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'reasoning-delta\';\n    index: number;\n    text: string;\n} | {\n    type: \'tool-call-delta\';\n    index: number;\n    id: CallId;\n    name?: string;\n    argumentsDelta: string;\n} | {\n    type: \'block-end\';\n    index: number;\n    block: ContentBlock;\n} | {\n    type: \'usage\';\n    usage: TokenUsage;\n} | {\n    type: \'trace-meta\';\n    traceMeta: GatewayResponseCorrelation;\n} | {\n    type: \'finish\';\n    reason: FinishReason;\n    replayState?: unknown;\n};',
   },
   {
     name: 'SubagentCapabilities',
@@ -4448,6 +4540,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'ToolSchema',
     declaration: 'export interface ToolSchema {\n    name: string;\n    description: string;\n    parameters: Record<string, unknown>;\n}',
+  },
+  {
+    name: 'TraceAgentIdentity',
+    declaration: 'export interface TraceAgentIdentity {\n    agentPlatform: string;\n    agentApplicationId: string;\n}',
+  },
+  {
+    name: 'TraceAttributeValue',
+    declaration: 'export type TraceAttributeValue = string | number | boolean;',
+  },
+  {
+    name: 'TraceSpanOptions',
+    declaration: 'export interface TraceSpanOptions {\n    name: string;\n    attributes?: Readonly<Record<string, TraceAttributeValue>>;\n    root?: boolean;\n}',
   },
   {
     name: 'TurnEndCancelCause',

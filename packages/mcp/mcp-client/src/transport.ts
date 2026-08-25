@@ -18,7 +18,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
-import { captureResponseTraceMeta, traceContextHeaders } from '@deepseek-ai/dsh-llm'
+import { captureGatewayResponseCorrelation, getTraceContext, traceContextHeaders } from '@deepseek-ai/dsh-llm'
+import type { TraceTelemetry } from '@deepseek-ai/dsh-telemetry'
 import type { Config } from './index.ts'
 
 /**
@@ -44,27 +45,46 @@ function buildChildEnv(extra: Record<string, string>): Record<string, string> {
  * On the response side, `traceparent` and `x-request-id` are extracted and
  * stored so the MCP tool bridge can attach them to `tool/result` session
  * events.
+ *
+ * A telemetry-enabled request opens an `mcp.client` span for every actual HTTP
+ * attempt. Header construction failures reject that attempt: retrying without
+ * the active context would create a gateway-owned fragment trace.
+ * @param telemetry - optional local tracing provider.
+ * @param input - request URL or input accepted by Fetch.
+ * @param init - optional Fetch initialization.
+ * @returns the gateway response.
  */
-async function traceAwareFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const headers = traceContextHeaders()
-  if (Object.keys(headers).length === 0) return globalThis.fetch(input, init)
-  const merged = new Headers(init?.headers)
-  for (const [key, value] of Object.entries(headers)) {
-    // Do not overwrite headers the caller set explicitly.
-    if (!merged.has(key)) merged.set(key, value)
+export function traceAwareFetch(telemetry: TraceTelemetry | undefined, input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const active = getTraceContext()
+  if (active === undefined) return globalThis.fetch(input, init)
+  const request = async (): Promise<Response> => {
+    const telemetryTraceparent = telemetry?.active()?.traceparent
+    const headers = {
+      ...traceContextHeaders(),
+      ...telemetryTraceparent === undefined ? {} : { traceparent: telemetryTraceparent },
+    }
+    if (Object.keys(headers).length === 0) return globalThis.fetch(input, init)
+    const merged = new Headers(init?.headers)
+    for (const [key, value] of Object.entries(headers)) {
+      // Harness owns correlation headers. Deployment headers cannot make a
+      // request leave the active local trace.
+      merged.set(key, value)
+    }
+    const response = await globalThis.fetch(input, { ...init, headers: merged })
+    captureGatewayResponseCorrelation(response.headers)
+    return response
   }
-  const response = await globalThis.fetch(input, { ...init, headers: merged })
-  captureResponseTraceMeta(response.headers)
-  return response
+  return telemetry === undefined ? request() : telemetry.withinSpan({ name: 'mcp.client' }, request)
 }
 
 /**
  * Create an MCP transport from the resolved plugin config.
  *
  * @param config - Resolved plugin config discriminated on `transport`.
+ * @param telemetry - optional local tracing provider.
  * @returns A connected-ready MCP Transport (stdio, Streamable HTTP, or SSE).
  */
-export function createTransport(config: Config): Transport {
+export function createTransport(config: Config, telemetry?: TraceTelemetry): Transport {
   switch (config.transport) {
     case 'stdio':
       return new StdioClientTransport({
@@ -80,16 +100,16 @@ export function createTransport(config: Config): Transport {
       // object, so the cast records only that widening.
       return new StreamableHTTPClientTransport(
         new URL(config.url),
-        { requestInit: { headers: config.headers }, fetch: traceAwareFetch },
+        { requestInit: { headers: config.headers }, fetch: (input, init) => traceAwareFetch(telemetry, input, init) },
       ) as Transport
     case 'sse':
       // The legacy SSE transport reads its request headers (also applied to
       // the upstream message POSTs) from `requestInit`, mirroring the
       // streamable-http branch above.
-      // SDK marks SSEClientTransport deprecated; kept for servers that cannot speak Streamable HTTP.
+      // oxlint-disable-next-line typescript/no-deprecated -- legacy servers still require this transport.
       return new SSEClientTransport(
         new URL(config.url),
-        { requestInit: { headers: config.headers }, fetch: traceAwareFetch },
+        { requestInit: { headers: config.headers }, fetch: (input, init) => traceAwareFetch(telemetry, input, init) },
       )
   }
 }

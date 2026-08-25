@@ -129,10 +129,31 @@ export interface ConnectionHandle {
  */
 export function startConnection(ctx: Context, config: Config, policy: ResolvedReconnectPolicy): ConnectionHandle {
   const label = `mcp-client(${config.serverName})`
+
+  // A reconnection promise created by onSessionInvalid and resolved when the
+  // new generation's connect + tool sync completes. Tool executors await this
+  // to retry calls that failed with a lapsed-session error instead of bubbling
+  // the unrecoverable error to the model.
+  let reconnected: PromiseWithResolvers<void> | undefined
+
   const opts: ToolBridgeOptions = {
     registrationFailure: 'contain',
     serverName: config.serverName,
     toolCallTimeoutMs: config.toolCallTimeoutMs,
+    onSessionInvalid: () => {
+      // A lapsed remote session cannot heal in-place. Close the current
+      // generation: its onclose signals generationDown, which schedules a
+      // reconnect whose fresh transport negotiates a new session id.
+      const current = client
+      if (current === undefined || disposed) return Promise.resolve()
+      ctx.logger.warn(`${label}: remote MCP session invalidated — reconnecting to negotiate a fresh session`)
+      if (reconnected === undefined) {
+        reconnected = Promise.withResolvers<void>()
+      }
+      void current.close().catch(() => { /* transport already gone */ })
+      return reconnected.promise
+    },
+    getClient: () => client,
   }
   // The initial sync uses 'throw' when failOnStartupError is configured, so
   // a registration conflict propagates to the startup-await path. Re-syncs
@@ -208,6 +229,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       const message = lostEstablishedConnection
         ? 'connection lost and reconnect is disabled — registered tools will fail until an HMR reload or Host restart'
         : 'connection failed and reconnect is disabled — no tools were registered; reload the plugin or restart the Host to connect'
+      // Reject any pending reconnection promise so tool executors don't hang.
+      reconnected?.reject(new Error(`${label}: ${message}`))
+      reconnected = undefined
       ctx.logger.error(`${label}: ${message}`)
       return
     }
@@ -224,6 +248,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         disposers = new Map()
         liveTools = []
       })
+      // Reject any pending reconnection promise so tool executors don't hang.
+      reconnected?.reject(new Error(`${label}: gave up after ${policy.maxAttempts} consecutive failed reconnect attempts`))
+      reconnected = undefined
       ctx.logger.error(`${label}: giving up after ${policy.maxAttempts} consecutive failed reconnect attempts — tools unregistered; reload the plugin or restart the Host to reconnect`)
       return
     }
@@ -283,7 +310,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       },
     )
     try {
-      await generation.connect(createTransport(config))
+      await generation.connect(createTransport(config, ctx.get('traceTelemetry')))
       if (hasClosed()) {
         attemptSettled = true
         generationDown(generation)
@@ -315,6 +342,10 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     }
     if (!isCurrent(generation)) return
     connectedAt = Date.now()
+    // Resolve any pending reconnection promise so tool executors waiting for
+    // a fresh session can retry their calls immediately.
+    reconnected?.resolve()
+    reconnected = undefined
     if (failedAttempts > 0) ctx.logger.info(`${label}: reconnected and re-synced tools (attempt ${failedAttempts}/${policy.maxAttempts})`)
   }
 
@@ -342,6 +373,9 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     async dispose(): Promise<void> {
       disposed = true
       liveTools = []
+      // Reject any pending reconnection promise so tool executors don't hang.
+      reconnected?.reject(new Error(`${label}: disposed during reconnection`))
+      reconnected = undefined
       if (reconnectTimer !== undefined) {
         clearTimeout(reconnectTimer)
         reconnectTimer = undefined

@@ -7,7 +7,8 @@ import type {
   SaveImageAttachment,
   StoredImageAttachment,
 } from '@deepseek-ai/dsh-attachment'
-import LlmRuntime, { createUserMessage, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, ReasoningEffortId, userAgent } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { AgentRunId, createUserMessage, CONTEXT_WINDOW_EXCEEDED_CODE, LlmError, ReasoningEffortId, userAgent } from '@deepseek-ai/dsh-llm'
+import type { StreamChunk } from '@deepseek-ai/dsh-llm'
 import * as LlmPiAi from '@deepseek-ai/dsh-llm-pi-ai'
 import { PiAiAdapter } from '@deepseek-ai/dsh-llm-pi-ai'
 import { MAX_TIMER_DELAY_MS } from '@deepseek-ai/dsh-timeout'
@@ -81,6 +82,61 @@ describe('PiAiAdapter provider routing', () => {
     await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
     expect(server.headers[0]?.['x-company']).toBe('private')
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
+  })
+
+  it('forwards request trace headers and emits the response correlation before content', async () => {
+    const responseTraceparent = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`
+    const server = await mockServer([{
+      events: textEvents,
+      headers: { traceparent: responseTraceparent, 'x-request-id': 'gateway-model-request' },
+    }])
+    const ctx = await harness(server.url, {
+      headers: {
+        traceparent: 'profile-must-not-win',
+        'X-Agent-Run-Id': 'profile-must-not-win',
+      },
+    })
+    const chunks: StreamChunk[] = []
+    for await (const chunk of ctx.llm.stream({
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      messages: [],
+      requestTrace: {
+        traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01`,
+        agentRunId: AgentRunId('run-123'),
+        agentPlatform: 'harness',
+        agentApplicationId: 'trace-test',
+      },
+    })) chunks.push(chunk)
+
+    expect(server.headers[0]).toMatchObject({
+      traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01`,
+      'x-agent-run-id': 'run-123',
+      'x-agent-platform': 'harness',
+      'x-agent-application-id': 'trace-test',
+    })
+    expect(chunks[0]).toMatchObject({
+      type: 'trace-meta',
+      traceMeta: {
+        responseTraceparent,
+        traceId: 'a'.repeat(32),
+        requestId: 'gateway-model-request',
+      },
+    })
+    expect(chunks.filter(chunk => chunk.type === 'trace-meta')).toHaveLength(1)
+  })
+
+  it('does not synthesize response correlation when Higress omits both headers', async () => {
+    const server = await mockServer([{ events: textEvents }])
+    const ctx = await harness(server.url)
+    const chunks: StreamChunk[] = []
+    for await (const chunk of ctx.llm.stream({
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      messages: [],
+      requestTrace: { traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01` },
+    })) chunks.push(chunk)
+    expect(chunks.filter(chunk => chunk.type === 'trace-meta')).toEqual([])
   })
 
   it('forwards common stream options and profile reasoning', async () => {

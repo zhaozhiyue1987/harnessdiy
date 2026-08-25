@@ -38,6 +38,8 @@ agent（智能体）的唯一具体实现插件和循环驱动器。其包内部
 ```ts
 interface Config {
   maxParallelToolCalls?: number // default 10; 1 is serial
+  agentPlatform?: string        // default 'deepseek-harness'; X-Agent-Platform gateway business header
+  agentApplicationId?: string   // optional; X-Agent-Application-Id gateway business header
   agents: Array<{
     id: string                 // required
     provider?: string
@@ -49,7 +51,9 @@ interface Config {
 }
 ```
 
-通过配置创建的 agent 会自动启动。模型调用同时需要 `provider` 和 `model`；`agent/request` 可以在分发前补齐缺失的这一对值。可选的正数 `maxTokens` 会为每次对话请求提供初始输出上限，并记录在请求 header 中。`maxParallelToolCalls` 限制每个 agent 针对并行安全调用使用的滚动池，默认值为 `10`；它同时也是 `agent-loop` Settings 段的全部内容，因此叠加在该条目之上的用户层无需重启即可限制下一组工具调用，而非正整数的值会在写入时被拒绝，而不是到那一组时才失败。`agents` 刻意不在该段中——它在服务启动时被消费一次，所以存储的改动只会看起来生效。`cwd` 仅应用于全新会话，而 `resumeSessionId` 保留持久化元数据。通过配置创建的 agent 使用部署 persona；编程式 setup 可以按 agent 遮蔽它。该插件为每个 agent 提供 `provider`、`model` 和 `cwd` 提示词变量；harness 身份与部署 persona 属于 `dsh-system-prompt`。
+通过配置创建的 agent 会自动启动。模型调用同时需要 `provider` 和 `model`；`agent/request` 可以在分发前补齐缺失的这一对值。可选的正数 `maxTokens` 会为每次对话请求提供初始输出上限，并记录在请求 header 中。`maxParallelToolCalls` 限制每个 agent 针对并行安全调用使用的滚动池，默认值为 `10`；它同时也是 `agent-loop` Settings 段的全部内容，因此叠加在该条目之上的用户层无需重启即可限制下一组工具调用，而非正整数的值会在写入时被拒绝，而不是到那一组时才失败。`agents` 刻意不在该段中——它在服务启动时被消费一次，所以存储的改动只会看起来生效。`cwd` 仅应用于全新会话，而 `resumeSessionId` 保留持久化元数据。通过配置创建的 agent 使用部署 persona；编程式 setup 可以按 agent 遮蔽它。该插件为每个 agent 提供 `provider`、`model` 和 `cwd` 提示词变量；harness 身份与部署 persona 属于 `dsh-system-prompt`。每次 driver 执行都会生成一个不透明的 `X-Agent-Run-Id`；该执行内的每个 LLM 请求和 HTTP MCP 请求都会携带该 ID 和 W3C `traceparent`。`X-Agent-Platform` 与 `X-Agent-Application-Id` 来自已挂载的 telemetry provider；未挂载 provider 时使用 loop 配置。这些部署 header 不对模型可见，也绝不进入会话日志。
+
+挂载 `TraceTelemetry` 后，一次 driver 执行会创建一个 `agent.run` 根 Span，并写入 run、平台、应用和 agent 标识。模型尝试创建嵌套的 `gen_ai.chat` 与 `llm.client` Span；工具派发创建 `mcp.tools.call`，HTTP 尝试在同一根下创建 `mcp.client` Span。注入的 header 来自当前本地 client Span。网关响应只以 `responseTraceparent`、request id 和 trace id 的形式保留用于关联；它绝不成为后续工具调用的父节点。
 
 ### 包内部具体驱动器
 

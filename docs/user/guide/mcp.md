@@ -94,7 +94,7 @@ Bound tools appear in the session with the server-provided description and input
 - **绑定 reports `already-bound`** — The server is already mounted on this session; unbind first.
 - **Binding fails on startup** — Set `failOnStartupError: true` to turn the logged failure into an explicit bind error, and confirm the URL is reachable and the headers are accepted.
 - **`invalid-spec`** — The URL field is missing for an HTTP or SSE transport, or the name does not match `[A-Za-z0-9_-]{1,32}`.
-- **Tools stop answering after an outage** — An HTTP server is retried per call; a crashed stdio child or a closed SSE stream goes through the reconnect policy (`reconnect.*`), whose budget eventually gives up and unregisters the tools.
+- **Tools stop answering after an outage** — An HTTP server is retried per call; a crashed stdio child or a closed SSE stream goes through the reconnect policy (`reconnect.*`), whose budget eventually gives up and unregisters the tools. A call failure that proves the remote session has lapsed (`SessionExpired` or similar) also triggers this policy, so reconnection negotiates a fresh session id.
 
 ## References
 

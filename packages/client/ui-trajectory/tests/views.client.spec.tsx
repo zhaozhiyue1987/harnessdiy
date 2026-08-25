@@ -41,7 +41,7 @@ import {
   TrajectoryView, type TrajectoryViewInjected,
 } from '../src/client/TrajectoryView.tsx'
 import { createTrajectoryDurationStore } from '../src/client/duration-store.ts'
-import type { TrajectorySnapshot } from '../src/client/trajectory-contract.ts'
+import type { TrajectoryGatewayTrace, TrajectorySnapshot } from '../src/client/trajectory-contract.ts'
 import { deriveTrajectoryTimeline } from '../src/client/timeline.ts'
 
 const SID = 's1' as SessionId
@@ -81,6 +81,7 @@ function historySnapshot(
     eventNodes: nodes,
     eventLocations: new Map(),
     requests: [],
+    gatewayTraces: new Map(),
     callSchemas: new Map(),
     partial: null,
     runningCalls: [],
@@ -405,6 +406,105 @@ describe('tab switching in ConversationRoot', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Close details' }))
     expect(screen.queryByRole('complementary', { name: 'Event details' })).toBeNull()
+  })
+
+  it('shows gateway model tokens from the reverse-query span in the request inspector', async () => {
+    const trace = {
+      traceId: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      source: 'tempo',
+      observation: { modelId: 'deepseek-chat' },
+      timing: {},
+      spans: [{
+        name: 'higress.ai.model',
+        attributes: {
+          'gen_ai.request.model': 'deepseek-chat',
+          'gen_ai.usage.input_tokens': 42,
+          'gen_ai.usage.output_tokens': 13,
+        },
+      }],
+      turn: 1,
+      step: 1,
+    } as unknown as TrajectoryGatewayTrace
+    const b = await bench(historySnapshot(NODES, {
+      gatewayTraces: new Map([['1\u00001', [trace]]]),
+    }))
+    mount(b.slots)
+    fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Request #1' })[0]!)
+    fireEvent.click(screen.getByRole('tab', { name: 'Gateway' }))
+
+    expect(screen.getByText('Input tokens')).toBeTruthy()
+    expect(screen.getByText('42')).toBeTruthy()
+    expect(screen.getByText('Output tokens')).toBeTruthy()
+    expect(screen.getByText('13')).toBeTruthy()
+  })
+
+  it('prioritizes real gateway requests and expands only the selected span branch', async () => {
+    const trace = {
+      traceId: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      requestId: 'gateway-model-request',
+      source: 'tempo',
+      observation: { statusCode: 200 },
+      timing: {},
+      spans: [
+        {
+          name: 'higress.gateway.request',
+          spanId: 'gateway-root',
+          parentSpanId: 'missing-local-client',
+          requestId: 'gateway-model-request',
+          startedAtMs: 1_000,
+          durationMs: 240,
+          attributes: {
+            'higress.request_id': 'gateway-model-request',
+            'http.response.status_code': 200,
+          },
+        },
+        {
+          name: 'higress.ai.model',
+          spanId: 'gateway-model',
+          parentSpanId: 'gateway-root',
+          durationMs: 240,
+          attributes: { 'gen_ai.response.model': 'deepseek-v4-flash' },
+        },
+        {
+          name: 'higress.gateway.request',
+          spanId: 'gateway-mcp-root',
+          requestId: 'gateway-mcp-request',
+          startedAtMs: 2_000,
+          durationMs: 60,
+          attributes: {
+            'higress.request_id': 'gateway-mcp-request',
+            'http.response.status_code': 202,
+          },
+        },
+        {
+          name: 'higress.mcp.call',
+          spanId: 'gateway-mcp',
+          parentSpanId: 'gateway-mcp-root',
+          durationMs: 60,
+          attributes: { 'mcp.service': 'weather' },
+        },
+      ],
+      turn: 1,
+      step: 1,
+    } as unknown as TrajectoryGatewayTrace
+    const b = await bench(historySnapshot(NODES, {
+      gatewayTraces: new Map([['1\u00001', [trace]]]),
+    }))
+    mount(b.slots)
+    fireEvent.click(screen.getByRole('tab', { name: 'Trajectory' }))
+
+    const gatewayRequests = screen.getByRole('region', { name: '网关请求' })
+    expect(gatewayRequests.textContent).toContain('gateway-model-request')
+    expect(gatewayRequests.textContent).toContain('gateway-mcp-request')
+    expect(gatewayRequests.querySelector('[data-gateway-request="gateway-model-request"]')?.textContent)
+      .toContain('deepseek-v4-flash')
+
+    fireEvent.click(screen.getByRole('button', { name: /deepseek-v4-flash/ }))
+    expect(screen.getByText('higress.ai.model')).toBeTruthy()
+    expect(screen.getByText('上级 Span 不在已授权的网关结果中。')).toBeTruthy()
+    expect(screen.queryByText('higress.mcp.call')).toBeNull()
   })
 
   it('labels a standalone compaction as between-turn work in the ledger and inspector', async () => {

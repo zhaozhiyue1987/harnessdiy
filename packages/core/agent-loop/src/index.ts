@@ -27,7 +27,7 @@ import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
 import { ReactLoopAgent } from './agent.ts'
-import { DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.ts'
+import { DEFAULT_AGENT_PLATFORM, DEFAULT_MAX_PARALLEL_TOOL_CALLS } from './constants.ts'
 
 /** Fiber states that cannot own or serve a new lifecycle. */
 const INACTIVE_STATES: ReadonlySet<FiberState> = new Set([
@@ -184,7 +184,7 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-export { DEFAULT_MAX_PARALLEL_TOOL_CALLS }
+export { DEFAULT_AGENT_PLATFORM, DEFAULT_MAX_PARALLEL_TOOL_CALLS }
 
 /**
  * One launcher-selected session identity for a configured agent. `resume`
@@ -258,6 +258,20 @@ export interface Config {
    * omission defaults to {@link DEFAULT_MAX_PARALLEL_TOOL_CALLS}.
    */
   maxParallelToolCalls?: number
+  /**
+   * Platform identifier written as the `X-Agent-Platform` gateway
+   * business-correlation header on every outbound LLM and MCP request.
+   * Omission defaults to {@link DEFAULT_AGENT_PLATFORM}. Deployment-wide, so
+   * it is not part of the agent-loop Settings section.
+   */
+  agentPlatform?: string
+  /**
+   * Optional application identifier written as the `X-Agent-Application-Id`
+   * gateway business-correlation header when present. The adapter writes
+   * headers field-by-field, so an unset value is omitted rather than sent
+   * empty.
+   */
+  agentApplicationId?: string
   /** Agents created or resumed at plugin startup. */
   agents: (AgentOptions & {
     /** Stable config label used in logs and as the fresh combined-id prefix. */
@@ -272,7 +286,7 @@ export interface Config {
 }
 
 /** Agent-loop configuration after defaults and load-time validation. */
-type ResolvedConfig = Config & { maxParallelToolCalls: number }
+type ResolvedConfig = Config & { maxParallelToolCalls: number; agentPlatform: string }
 
 /** Reject self-contained identity conflicts before any configured agent starts. */
 function validateConfiguredAgents(agents: Config['agents']): void {
@@ -299,6 +313,8 @@ export class AgentLoop extends Service implements AgentFactory {
   /** Runtime schema for declarative agents. */
   static Config = z.object({
     maxParallelToolCalls: z.number().step(1).min(1).default(DEFAULT_MAX_PARALLEL_TOOL_CALLS),
+    agentPlatform: z.string().min(1).default(DEFAULT_AGENT_PLATFORM),
+    agentApplicationId: z.string().min(1),
     agents: z.array(z.object({
       id: z.string().required(),
       sessionId: z.string().min(1),
@@ -324,6 +340,10 @@ export class AgentLoop extends Service implements AgentFactory {
     let source: () => AgentLoopSettings = () => entry
     this.config = {
       ...config,
+      // The schema default guarantees runtime presence; the explicit resolve
+      // narrows the optional Config field to the required ResolvedConfig field
+      // at the load-time boundary, never inside the run() hot path.
+      agentPlatform: config.agentPlatform ?? DEFAULT_AGENT_PLATFORM,
       agents: applyLauncherIdentities(config.agents, ctx.get(CONFIGURED_AGENT_IDENTITIES_KEY)),
       // Read through on every scheduler decision: `tool-calls.ts` destructures
       // this at the start of each group, so a committed change caps the next

@@ -10,6 +10,9 @@ import { foldRequestHeader } from '@deepseek-ai/dsh-session'
 
 const PACKAGE_NAME = '@deepseek-ai/dsh-agent-loop'
 
+/** W3C Trace Context `traceparent` format: `00-<32-hex trace-id>-<16-hex span-id>-01`. */
+const W3C_TRACEPARENT = /^00-[0-9a-f]{32}-[0-9a-f]{16}-01$/
+
 /** Cordis companion plugin name. */
 export const name = 'agent-loop-invariant'
 /** Service required before the companion can reserve package ownership. */
@@ -50,6 +53,12 @@ const install: InvariantInstaller = Object.assign((ctx: Context, fail: Invariant
     if (!headerMatches) {
       fail(`llm request for session "${String(session.id)}" diverges from the folded request header`)
     }
+    // Trace correlation is checked after reconstruction: a divergent request
+    // reports its reconstruction fault before its missing trace correlation.
+    const trace = options.requestTrace
+    if (trace === undefined) fail('a loop-built request must carry requestTrace for gateway trace correlation')
+    if (trace.agentRunId === undefined) fail('a loop-built request must carry an agentRunId')
+    if (!W3C_TRACEPARENT.test(trace.traceparent)) fail(`a loop-built request must carry a W3C-formatted traceparent, got "${trace.traceparent}"`)
     return next()
   }, { global: true, prepend: true })
 }, { inject: ['sessions'] })
