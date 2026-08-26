@@ -12,7 +12,6 @@ import {
   type TrajectoryRequestNumber,
   type TrajectoryUsage,
 } from './TrajectoryTable.tsx'
-import { GatewayRequestList } from './GatewayRequestList.tsx'
 import { TrajectoryToolbar } from './TrajectoryToolbar.tsx'
 import { TrajectoryTimeline } from './TrajectoryTimeline.tsx'
 import {
@@ -25,7 +24,6 @@ import {
   type TrajectoryTimeRange,
 } from './timeline.ts'
 import { trajectoryRecordId } from './trajectory-record.ts'
-import { indexGatewayRequests } from './gateway-request-index.ts'
 import { TrajectorySearchIndex } from './trajectory-search-index.ts'
 import { EMPTY_TRAJECTORY_SNAPSHOT } from './trajectory-snapshot-builder.ts'
 import css from './views.module.css'
@@ -152,12 +150,7 @@ export function TrajectoryView({
   const partial = inspection.partial
   const runningCalls = inspection.runningCalls
   const requests = inspection.requests
-  const gatewayTraces = inspection.gatewayTraces
   const callSchemas = inspection.callSchemas
-  const gatewayRequestIndex = useMemo(
-    () => indexGatewayRequests([...gatewayTraces.values()].flat()),
-    [gatewayTraces],
-  )
   const requestNumbers = useMemo<readonly TrajectoryRequestNumber[]>(() => {
     const assistantsByStep = new Map<string, AssistantMessageNode>()
     for (const node of nodes) {
@@ -204,7 +197,6 @@ export function TrajectoryView({
         const provider = request?.provenance?.provider ?? node?.provenance?.provider
         const model = request?.provenance?.model ?? node?.provenance?.model
         const requestConfig = request?.requestConfig ?? node?.requestConfig
-        const gateway = gatewayTraces.get(`${turn}\u0000${step}`)
         numbered.push({
           seq: entry.seq,
           turn,
@@ -226,7 +218,6 @@ export function TrajectoryView({
           ...(requestConfig === undefined ? {} : { requestConfig }),
           ...(usage === undefined ? {} : { usage }),
           ...(cumulativeUsage === undefined ? {} : { cumulativeUsage }),
-          ...(gateway === undefined ? {} : { gatewayTraces: gateway }),
         })
         continue
       }
@@ -257,7 +248,7 @@ export function TrajectoryView({
 
     return numbered
   }, [
-    nodes, requests, gatewayTraces,
+    nodes, requests,
   ])
   const partialTurn = partial?.turn ?? null
   const partialStep = partial?.step ?? null
@@ -473,7 +464,6 @@ export function TrajectoryView({
         onSearchQueryChange={setSearchQuery}
         t={t}
       />
-      <GatewayRequestList index={gatewayRequestIndex} />
       <TrajectoryTimeline
         turns={timelineTurns}
         mode={timelineMode}

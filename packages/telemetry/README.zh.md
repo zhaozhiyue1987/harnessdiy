@@ -9,4 +9,4 @@ telemetry 家族创建 Harness 自有的语义 Span，并经由 OTLP 导出已�
 | [`telemetry/`](telemetry/README.md) | TraceTelemetry Service Definition 与 W3C 上下文约定 | `ctx.traceTelemetry` |
 | [`telemetry-otel/`](telemetry-otel/README.md) | OTLP/HTTP protobuf Provider | `ctx.traceTelemetry` |
 
-网关响应关联与反查属于独立的 [gateway 家族](../gateway/README.md)；telemetry 不存储响应，也不渲染 Trace UI。
+telemetry 只导出本地 Span；它不读取网关响应、不查询 Trace 数据，也不渲染 Trace UI。

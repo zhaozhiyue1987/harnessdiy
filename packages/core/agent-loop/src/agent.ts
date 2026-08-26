@@ -436,7 +436,6 @@ export class ReactLoopAgent implements Agent {
           step,
           message,
           ...assembler.usage === undefined ? {} : { usage: assembler.usage },
-          ...assembler.traceMeta === undefined ? {} : { traceMeta: assembler.traceMeta },
         },
         { surfaceOp: 'append', sourceEventSeqs: chunkSeqs },
       )
@@ -444,9 +443,6 @@ export class ReactLoopAgent implements Agent {
 
       const toolCalls = message.content.filter(block => block.type === 'tool-call')
       if (toolCalls.length === 0) return { kind: 'completed' }
-      // Response correlation identifies a completed gateway request for reverse
-      // query only. Tool requests inherit the local step context; a gateway
-      // response span is never a Harness parent context.
       const { concluded } = await withTraceContext(traceCtx, () =>
         executeToolCalls(
           this.loopCtx, turn, step, toolCalls, signal,

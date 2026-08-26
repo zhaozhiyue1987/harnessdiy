@@ -108,7 +108,6 @@
         "./packages/fs/*/src/invariant.ts",
         "./packages/skill/*/src/invariant.ts",
         "./packages/compaction/*/src/invariant.ts",
-        "./packages/gateway/*/src/invariant.ts",
         "./packages/context/*/src/invariant.ts",
         "./packages/goal/*/src/invariant.ts",
         "./packages/feedback/*/src/invariant.ts",
@@ -226,7 +225,6 @@
       "@deepseek-ai/dsh-sdk-client": ["./packages/sdk/client/src"],
       "@deepseek-ai/dsh-sdk-protocol": ["./packages/sdk/protocol/src"],
       "@deepseek-ai/dsh-sdk-jsonrpc-server": ["./packages/sdk/server/src"],
-      "@deepseek-ai/dsh-gateway-trace-console": ["./packages/gateway/gateway-trace-console/src/index.ts"],
       "@deepseek-ai/dsh-*": [
         "./packages/core/*/src",
         "./packages/prompt/*/src",
@@ -240,7 +238,6 @@
         "./packages/lsp/*/src",
         "./packages/skill/*/src",
         "./packages/compaction/*/src",
-        "./packages/gateway/*/src",
         "./packages/context/*/src",
         "./packages/goal/*/src",
         "./packages/feedback/*/src",

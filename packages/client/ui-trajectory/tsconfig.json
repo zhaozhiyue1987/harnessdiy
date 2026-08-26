@@ -33,9 +33,6 @@
       "path": "../../compaction/compaction"
     },
     {
-      "path": "../../gateway/gateway-trace"
-    },
-    {
       "path": "../../runtime-diagnostics/invariants"
     }
   ]

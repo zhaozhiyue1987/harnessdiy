@@ -353,11 +353,6 @@
     },
     {
       "doc": "docs/subsystems/llm-streaming.md",
-      "symbol": "GatewayResponseCorrelation",
-      "source": "packages/llm/llm/src/types.ts"
-    },
-    {
-      "doc": "docs/subsystems/llm-streaming.md",
       "symbol": "RequestTrace",
       "source": "packages/llm/llm/src/types.ts"
     },

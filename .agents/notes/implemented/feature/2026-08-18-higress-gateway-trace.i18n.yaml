@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-18-higress-gateway-trace.md
-2026-08-18-higress-gateway-trace.md: eeff03f46bdc551acad25861d46dbb0752c3cd4f
-2026-08-18-higress-gateway-trace.zh.md: f8b77206b49645f53821891e7a8951e364de93dd

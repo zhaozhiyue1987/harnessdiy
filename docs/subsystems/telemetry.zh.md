@@ -2,7 +2,7 @@
 
 [English](telemetry.md) | 中文
 
-`ctx.traceTelemetry` 是 Harness 自有语义 Span 的可选服务。它创建根或子 Span，使异步 Consumer 可读取当前 W3C 上下文，并为出站网关 header 提供已配置的部署标识。OTLP Provider 负责导出与卸载；响应关联和 Higress 反查属于 gateway-trace 子系统。
+`ctx.traceTelemetry` 是 Harness 自有语义 Span 的可选服务。它创建根或子 Span，使异步 Consumer 可读取当前 W3C 上下文，并为出站网关 header 提供已配置的部署标识。OTLP Provider 负责导出与卸载。
 
 源码：[`packages/telemetry/telemetry/src/index.ts`](../../packages/telemetry/telemetry/src/index.ts)
 

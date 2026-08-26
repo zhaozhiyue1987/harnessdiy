@@ -9,4 +9,4 @@ The telemetry family creates Harness-owned semantic spans and exports completed 
 | [`telemetry/`](telemetry/README.md) | TraceTelemetry Service Definition and W3C context contract | `ctx.traceTelemetry` |
 | [`telemetry-otel/`](telemetry-otel/README.md) | OTLP/HTTP protobuf provider | `ctx.traceTelemetry` |
 
-Gateway response correlation and reverse queries belong to the separate [gateway family](../gateway/README.md); telemetry does not store responses or render a Trace UI.
+Telemetry exports local spans only. It does not read gateway responses, query trace data, or render a Trace UI.

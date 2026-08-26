@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-24-pi-ai-gateway-trace-correlation.md
-2026-08-24-pi-ai-gateway-trace-correlation.md: 542dadcbb430ab13488eede6de56aff0360c1681
-2026-08-24-pi-ai-gateway-trace-correlation.zh.md: 597f821eaa62b42351c35aae3a6c7b42fb3e983d

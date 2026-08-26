@@ -118,7 +118,7 @@ profile 的 `models` 列表是*替换*该路由已安装 catalog，而不是扩�
 
 适配器强制 pi-ai SDK `maxRetries` 为零，因此一次 `stream()` 调用只会发起一次提供方请求。已移除 profile 字段 `maxRetries` 和 `maxRetryDelayMs` 会使加载失败，而不是静默倍增或隐藏单独组合的 agent（智能体）级重试预算。空闲超时会 abort SDK 的稳定请求信号，并以 `TIMEOUT` 呈现；较早的调用方 abort 仍为 `ABORTED`。
 
-`GenerateOptions.requestTrace` 存在时，适配器会在 profile headers 之后写入其 W3C `traceparent` 和可选 `X-Agent-*` 字段，使部署不能替换 Harness 关联。pi-ai 通用的 `onResponse` 回调会在内容到达前解析有效的响应 `traceparent` 或 `x-request-id`，并发出一项不对模型可见的 `trace-meta` 流分片。缺失或无效响应头不产生关联；绝不以出站 trace id 替代。
+`GenerateOptions.requestTrace` 存在时，适配器会在 profile headers 之后写入其 W3C `traceparent` 和可选 `X-Agent-*` 字段，使部署不能替换 Harness 关联。适配器不会解释网关响应头。
 
 ## 端点询问
 

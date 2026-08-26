@@ -27,7 +27,6 @@ Groups hold `packages/<group>/<pkg>/`; names stay `@deepseek-ai/dsh-<pkg>`. **Gr
 | [`fs/`](fs/README.md) | Filesystem capability family: seam, local impl, model-facing file tools, bash-backed discovery tools | Product — stable API |
 | [`lsp/`](lsp/README.md) | LSP capability family: seam, generic stdio provider, and the `lsp` tool | Product — stable API |
 | [`mcp/`](mcp/README.md) | MCP capability family: the `mcp-client` bridge onto `ctx.tools` and the `mcp-manager` management plane | Product — stable API |
-| [`gateway/`](gateway/README.md) | Higress Trace reverse-query capability: sanitized observations, service-account and Console providers | Product — stable API |
 | [`telemetry/`](telemetry/README.md) | Local OpenTelemetry Trace capability: semantic spans, W3C context propagation, and OTLP export | Product — stable API |
 | [`skill/`](skill/README.md) | Skill capability family: the provider registry, local provider, and model-facing catalog/loader | Product — stable API |
 | [`compaction/`](compaction/README.md) | Compaction capability family: Service Definition + basic provider + command Consumer | Product — stable API |

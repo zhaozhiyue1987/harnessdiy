@@ -115,15 +115,6 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Adapters register provider implementations; the loop and compaction call the provider-neutral stream service.',
   },
   {
-    key: 'gatewayTrace',
-    pkg: 'gateway-trace',
-    title: 'Higress Trace reverse-query seam',
-    mode: 'seam',
-    implementations: ['gateway-trace-query', 'gateway-trace-console'],
-    consumers: ['ui-trajectory'],
-    note: 'Trusted Host providers query authorized Higress facts after a response; the browser reads only the sanitized, persisted observation.',
-  },
-  {
     key: 'traceTelemetry',
     pkg: 'telemetry',
     title: 'Local OpenTelemetry Trace seam',

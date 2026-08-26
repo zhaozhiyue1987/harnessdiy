@@ -33,7 +33,6 @@ import type {
 } from '@earendil-works/pi-ai'
 import {
   attributionHeaders,
-  captureGatewayResponseCorrelation,
   contentHasImage,
   LlmAdapter,
   LlmError,
@@ -41,7 +40,6 @@ import {
 } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
-  GatewayResponseCorrelation,
   LlmModelInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
@@ -325,7 +323,6 @@ export class PiAiAdapter extends LlmAdapter {
       const context = attachments === undefined
         ? toPiContext(options)
         : await toPiContext(options, attachments)
-      let traceMeta: GatewayResponseCorrelation | undefined
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
@@ -335,13 +332,9 @@ export class PiAiAdapter extends LlmAdapter {
         // Profile headers are deployment-owned; Harness attribution and request
         // trace names are reserved so one route cannot break correlation.
         headers: requestHeaders(profile.headers, options.requestTrace),
-        onResponse(response) {
-          traceMeta = captureGatewayResponseCorrelation(new Headers(response.headers))
-        },
       })
       const iterator = toStreamChunks(events, model.contextWindow)[Symbol.asyncIterator]()
       let exhausted = false
-      let emittedTraceMeta = false
       try {
         while (true) {
           const result = await watchdog.next(iterator)
@@ -350,10 +343,6 @@ export class PiAiAdapter extends LlmAdapter {
           if (result.done) {
             exhausted = true
             return
-          }
-          if (!emittedTraceMeta) {
-            emittedTraceMeta = true
-            if (traceMeta !== undefined) yield { type: 'trace-meta', traceMeta }
           }
           yield result.value
         }

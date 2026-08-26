@@ -34,6 +34,10 @@ pnpm run build
 pnpm dsh web
 ```
 
+### Higress Trace 上报
+
+可选的 Higress 集成由 Harness 管理 MCP，并通过 OTLP/HTTP 单向导出本地智能体 Span。该集成不需要 Higress Console 凭据，也不会从网关读取 Trace 数据。参见 [Higress Trace 对接指南](harness-higress-trace-adaptation-guide-v1.md)。
+
 ## 社区与支持
 
 - 欢迎通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。

@@ -71,9 +71,6 @@ async function* validateStream(
         if (usageSeen) fail('LLM stream emitted usage more than once')
         usageSeen = true
         break
-      case 'trace-meta':
-        // Gateway trace correlation metadata — no grammar constraint beyond at-most-once.
-        break
       case 'finish':
         if (open.size > 0 && chunk.reason.kind !== 'error' && chunk.reason.kind !== 'aborted') {
           fail(`LLM stream finished with ${open.size} open block(s)`)

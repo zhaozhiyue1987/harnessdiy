@@ -18,7 +18,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
-import { captureGatewayResponseCorrelation, getTraceContext, traceContextHeaders } from '@deepseek-ai/dsh-llm'
+import { getTraceContext, traceContextHeaders } from '@deepseek-ai/dsh-llm'
 import type { TraceTelemetry } from '@deepseek-ai/dsh-telemetry'
 import type { Config } from './index.ts'
 
@@ -34,17 +34,12 @@ function buildChildEnv(extra: Record<string, string>): Record<string, string> {
 
 /**
  * Wrap `globalThis.fetch` to inject W3C Trace Context headers from the active
- * `AsyncLocalStorage` trace context, and capture gateway trace correlation
- * metadata from the response. When no trace context is active, the request
- * passes through unchanged (and no response capture occurs).
+ * `AsyncLocalStorage` trace context. When no trace context is active, the
+ * request passes through unchanged.
  *
  * The gateway expects `traceparent` on incoming HTTP requests so it can link
  * MCP tool calls into the same trace as the originating LLM call. The
  * `X-Agent-*` business-correlation headers are also injected when present.
- *
- * On the response side, `traceparent` and `x-request-id` are extracted and
- * stored so the MCP tool bridge can attach them to `tool/result` session
- * events.
  *
  * A telemetry-enabled request opens an `mcp.client` span for every actual HTTP
  * attempt. Header construction failures reject that attempt: retrying without
@@ -70,9 +65,7 @@ export function traceAwareFetch(telemetry: TraceTelemetry | undefined, input: Re
       // request leave the active local trace.
       merged.set(key, value)
     }
-    const response = await globalThis.fetch(input, { ...init, headers: merged })
-    captureGatewayResponseCorrelation(response.headers)
-    return response
+    return globalThis.fetch(input, { ...init, headers: merged })
   }
   return telemetry === undefined ? request() : telemetry.withinSpan({ name: 'mcp.client' }, request)
 }

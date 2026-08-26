@@ -8,7 +8,7 @@
  * @module dsh-llm-deepseek/adapter
  */
 
-import { attributionHeaders, captureGatewayResponseCorrelation, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { attributionHeaders, CONTEXT_WINDOW_EXCEEDED_CODE, isContextWindowExceededError, isQuotaExceededError, LlmAdapter, LlmError, ProviderRequestId, QUOTA_EXCEEDED_CODE, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions,
   LlmModelInfo,
@@ -353,18 +353,6 @@ export class DeepSeekAdapter extends LlmAdapter {
     }
     if (!response.body) {
       throw new LlmError('DeepSeek API returned no response body', 'EMPTY_RESPONSE')
-    }
-
-    // Emit trace correlation metadata from the gateway response headers before
-    // the SSE body so the assembler captures it alongside usage data.
-    const traceHeaders = new Headers(response.headers)
-    const legacyRequestId = traceHeaders.get('x-deepseek-request-id')
-    if (!traceHeaders.has('x-request-id') && legacyRequestId !== null && legacyRequestId.length > 0) {
-      traceHeaders.set('x-request-id', legacyRequestId)
-    }
-    const traceMeta = captureGatewayResponseCorrelation(traceHeaders)
-    if (traceMeta !== undefined) {
-      yield { type: 'trace-meta', traceMeta }
     }
 
     yield* translate(parseSse(response.body, onComment))

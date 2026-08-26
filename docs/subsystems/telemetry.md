@@ -2,7 +2,7 @@
 
 English | [中文](telemetry.zh.md)
 
-`ctx.traceTelemetry` is the optional service for Harness-owned semantic spans. It creates a root or child span, makes the active W3C context available to asynchronous consumers, and supplies the configured deployment identity for outbound gateway headers. The OTLP provider owns export and shutdown; response correlation and Higress reverse queries belong to the gateway-trace subsystem.
+`ctx.traceTelemetry` is the optional service for Harness-owned semantic spans. It creates a root or child span, makes the active W3C context available to asynchronous consumers, and supplies the configured deployment identity for outbound gateway headers. The OTLP provider owns export and shutdown.
 
 Source: [`packages/telemetry/telemetry/src/index.ts`](../../packages/telemetry/telemetry/src/index.ts)
 

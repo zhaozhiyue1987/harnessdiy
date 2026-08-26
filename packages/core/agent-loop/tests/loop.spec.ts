@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { Context } from '@deepseek-ai/cordis'
-import LlmRuntime, { createUserMessage, CallId, GatewayTraceId, getTraceContext, LlmError, StreamChunk  } from '@deepseek-ai/dsh-llm'
+import LlmRuntime, { createUserMessage, CallId, getTraceContext, LlmError, StreamChunk  } from '@deepseek-ai/dsh-llm'
 import TraceTelemetry, { type ActiveTraceSpan, type OutboundTraceContext, type TraceSpanOptions } from '@deepseek-ai/dsh-telemetry'
 import SessionStore, { SessionId, TurnEndReason } from '@deepseek-ai/dsh-session'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
@@ -270,17 +270,8 @@ describe('agent loop', () => {
   })
 
   it('keeps the local model request context for its tool calls', async () => {
-    const responseTraceparent = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`
     const adapter = new MockAdapter([
       [
-        {
-          type: 'trace-meta',
-          traceMeta: {
-            responseTraceparent,
-            traceId: GatewayTraceId('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
-            receivedAt: '2026-08-24T00:00:00.000Z',
-          },
-        },
         ...toolCallResponse('trace-call', 'capture-trace', {}),
       ],
       textResponse('done'),
@@ -302,7 +293,6 @@ describe('agent loop', () => {
     await waitForIdle(ctx, agent)
 
     expect(toolTraceparents).toEqual([adapter.requests[0]?.requestTrace?.traceparent])
-    expect(toolTraceparents).not.toEqual([responseTraceparent])
   })
 
   it('uses deployment trace identity without an OTLP provider', async () => {

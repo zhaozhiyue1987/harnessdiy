@@ -1,5 +1,5 @@
 /**
- * W3C Trace Context utilities for gateway trace correlation.
+ * W3C Trace Context utilities for outbound gateway tracing.
  *
  * A single **trace-id** is shared across all steps of one agent turn so the
  * gateway links LLM calls and MCP tool calls into one trace. Each step (LLM
@@ -14,7 +14,6 @@
 
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomBytes } from 'node:crypto'
-import { GatewayRequestId, GatewayTraceId, type GatewayResponseCorrelation } from './types.ts'
 import type { AgentRunId } from './brand.ts'
 
 /** The active trace identity propagated through the call chain. */
@@ -27,8 +26,6 @@ export interface ActiveTraceContext {
   agentPlatform?: string
   /** Application identifier (written as `X-Agent-Application-Id`). */
   agentApplicationId?: string
-  /** Per-operation response observations owned by a nested async scope. */
-  responseCorrelations?: GatewayResponseCorrelation[]
 }
 
 /**
@@ -121,50 +118,4 @@ export function traceContextHeaders(): Record<string, string> {
   if (ctx.agentPlatform !== undefined) headers['x-agent-platform'] = ctx.agentPlatform
   if (ctx.agentApplicationId !== undefined) headers['x-agent-application-id'] = ctx.agentApplicationId
   return headers
-}
-
-/**
- * Run one operation with an isolated response-correlation collector. Nested
- * collectors preserve outbound headers but prevent parallel tool calls from
- * observing one another's gateway responses.
- *
- * @param fn - operation that may issue gateway HTTP requests.
- * @returns its result and every response correlation captured during it.
- */
-export async function collectGatewayResponseCorrelations<R>(fn: () => Promise<R>): Promise<{
-  result: R
-  correlations: GatewayResponseCorrelation[]
-}> {
-  const trace = getTraceContext()
-  if (trace === undefined) return { result: await fn(), correlations: [] }
-  const correlations: GatewayResponseCorrelation[] = []
-  const result = await activeTraceContext.run({ ...trace, responseCorrelations: correlations }, fn)
-  return { result, correlations }
-}
-
-/**
- * Extract gateway correlation from response headers and append it to the active
- * operation collector. A request id remains useful when traceparent is absent
- * or invalid, so neither header gates the other. The parsed value is returned
- * for adapters that retain their own response correlation.
- * @param headers - response headers received from the gateway.
- * @returns the parsed correlation, or undefined when neither supported header is present.
- */
-export function captureGatewayResponseCorrelation(headers: Headers): GatewayResponseCorrelation | undefined {
-  const traceparent = headers.get('traceparent')
-  const traceMatch = traceparent === null
-    ? undefined
-    : /^00-([0-9a-f]{32})-[0-9a-f]{16}-[0-9a-f]{2}$/i.exec(traceparent) ?? undefined
-  const requestId = headers.get('x-request-id')
-  const responseTraceparent = traceMatch === undefined || traceparent === null ? undefined : traceparent
-  const traceId = traceMatch?.[1]
-  const correlation: GatewayResponseCorrelation = {
-    receivedAt: new Date().toISOString(),
-    ...responseTraceparent === undefined ? {} : { responseTraceparent },
-    ...traceId === undefined ? {} : { traceId: GatewayTraceId(traceId.toLowerCase()) },
-    ...requestId === null || requestId.length === 0 ? {} : { requestId: GatewayRequestId(requestId) },
-  }
-  if (correlation.traceId === undefined && correlation.requestId === undefined) return undefined
-  getTraceContext()?.responseCorrelations?.push(correlation)
-  return correlation
 }

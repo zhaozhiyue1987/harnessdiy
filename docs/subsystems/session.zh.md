@@ -61,7 +61,7 @@ interface SessionEventMap {
    * the model output and its accounting travel together (there is no separate
    * usage record). `usage` is absent when the adapter reported none.
    */
-  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage; traceMeta?: GatewayResponseCorrelation }
+  'assistant/message': { turn: number; step: number; message: AssistantMessage; usage?: TokenUsage }
   /**
    * The model requested one tool invocation: `name` with the raw `arguments`
    * JSON string exactly as the model produced it (unparsed). `callId` pairs the
@@ -85,8 +85,6 @@ interface SessionEventMap {
     message: ToolResultMessage
     error?: { name: string; code: string }
     meta?: JsonValue
-    /** Gateway response correlations captured while this tool call was dispatched. */
-    gatewayResponseCorrelations?: GatewayResponseCorrelation[]
   }
   /** Whole-list snapshot; latest write wins on replay. Log-only UI state; never derived history. */
   'todo/write': { todos: TodoItem[] }

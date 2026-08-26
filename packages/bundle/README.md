@@ -10,6 +10,5 @@ Profile bundles: npm packages whose manifest declares `"dsh": { "bundle": { "pat
 | [`web-app/`](web-app/README.md) | Browser surface: web patch layer + runtime glue plugin | mounts rows |
 | [`headless/`](headless/README.md) | Direct one-shot task mode over base, with no Host or Web layer | mounts `headless-runner` |
 | [`mcp-dsh/`](mcp-dsh/README.md) | MCP server catalog and session-scoped bindings over base | — (patch only) |
-| [`higress-trace/`](higress-trace/README.md) | Optional Higress Trace query and local OTLP composition | mounts one reverse-query provider and telemetry |
 
 In-box bundles resolve from the dsh installation; out-of-tree bundles install into a profile through `dsh plugin --profile <name> add <package>`.

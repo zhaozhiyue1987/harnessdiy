@@ -92,12 +92,11 @@ describe('DeepSeekAdapter against a mock server', () => {
   })
 
   it('streams raw chunks through ctx.llm.stream', async () => {
-    const responseTraceparent = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`
     const server = await mockServer([{
       kind: 'sse',
       events: textEvents,
       delayMs: 2,
-      headers: { traceparent: responseTraceparent, 'x-deepseek-request-id': 'deepseek-response' },
+      headers: { traceparent: `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`, 'x-deepseek-request-id': 'deepseek-response' },
     }, { kind: 'sse', events: textEvents }])
     const ctx = await harness(server.url)
 
@@ -116,15 +115,7 @@ describe('DeepSeekAdapter against a mock server', () => {
         agentApplicationId: 'gateway-test',
       },
     })) chunks.push(chunk)
-    expect(chunks[0]).toMatchObject({
-      type: 'trace-meta',
-      traceMeta: {
-        responseTraceparent,
-        traceId: 'a'.repeat(32),
-        requestId: 'deepseek-response',
-      },
-    })
-    expect(chunks.map(chunk => chunk.type)).toEqual(['trace-meta', 'block-start', 'text-delta', 'block-end', 'usage', 'finish'])
+    expect(chunks.map(chunk => chunk.type)).toEqual(['block-start', 'text-delta', 'block-end', 'usage', 'finish'])
     expect(server.headers[0]).toMatchObject({
       traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01`,
       'x-agent-run-id': 'run-123',

@@ -84,11 +84,10 @@ describe('PiAiAdapter provider routing', () => {
     expect(server.headers[0]?.['user-agent']).toBe(userAgent())
   })
 
-  it('forwards request trace headers and emits the response correlation before content', async () => {
-    const responseTraceparent = `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`
+  it('forwards request trace headers without interpreting the response', async () => {
     const server = await mockServer([{
       events: textEvents,
-      headers: { traceparent: responseTraceparent, 'x-request-id': 'gateway-model-request' },
+      headers: { traceparent: `00-${'a'.repeat(32)}-${'b'.repeat(16)}-01`, 'x-request-id': 'gateway-model-request' },
     }])
     const ctx = await harness(server.url, {
       headers: {
@@ -115,18 +114,10 @@ describe('PiAiAdapter provider routing', () => {
       'x-agent-platform': 'harness',
       'x-agent-application-id': 'trace-test',
     })
-    expect(chunks[0]).toMatchObject({
-      type: 'trace-meta',
-      traceMeta: {
-        responseTraceparent,
-        traceId: 'a'.repeat(32),
-        requestId: 'gateway-model-request',
-      },
-    })
-    expect(chunks.filter(chunk => chunk.type === 'trace-meta')).toHaveLength(1)
+    expect(chunks.map(chunk => chunk.type)).toEqual(['block-start', 'text-delta', 'block-end', 'usage', 'finish'])
   })
 
-  it('does not synthesize response correlation when Higress omits both headers', async () => {
+  it('keeps outbound tracing independent of Higress response headers', async () => {
     const server = await mockServer([{ events: textEvents }])
     const ctx = await harness(server.url)
     const chunks: StreamChunk[] = []
@@ -136,7 +127,7 @@ describe('PiAiAdapter provider routing', () => {
       messages: [],
       requestTrace: { traceparent: `00-${'c'.repeat(32)}-${'d'.repeat(16)}-01` },
     })) chunks.push(chunk)
-    expect(chunks.filter(chunk => chunk.type === 'trace-meta')).toEqual([])
+    expect(chunks.map(chunk => chunk.type)).toEqual(['block-start', 'text-delta', 'block-end', 'usage', 'finish'])
   })
 
   it('forwards common stream options and profile reasoning', async () => {

@@ -34,6 +34,10 @@ pnpm run build
 pnpm dsh web
 ```
 
+### Higress trace export
+
+An optional Higress integration keeps MCP management in Harness and exports local agent spans one-way through OTLP/HTTP. It does not require Higress Console credentials and does not read trace data back from the gateway. See the [Higress trace integration guide](harness-higress-trace-adaptation-guide-v1.md).
+
 ## Community and support
 
 - Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { BlockAssembler, CallId, GatewayRequestId, GatewayTraceId, type StreamChunk } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, CallId, type StreamChunk } from '@deepseek-ai/dsh-llm'
 
 describe('BlockAssembler', () => {
   it('assembles interleaved text, reasoning, and tool-call deltas', () => {
@@ -117,24 +117,6 @@ describe('BlockAssembler', () => {
     expect(assembler.usage).toEqual({ inputTokens: 5, outputTokens: 3 })
   })
 
-  it('captures trace-meta from the trace-meta chunk', () => {
-    const assembler = new BlockAssembler()
-    assembler.push({ type: 'text-delta', index: 0, text: 'msg' })
-    assembler.push({ type: 'usage', usage: { inputTokens: 5, outputTokens: 3 } })
-    assembler.push({
-      type: 'trace-meta',
-      traceMeta: { responseTraceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f67890-01', traceId: GatewayTraceId('bb7424f8effb4411008f0b7d04f0b07f'), requestId: GatewayRequestId('req-123'), receivedAt: '2026-08-24T00:00:00.000Z' },
-    })
-    assembler.push({ type: 'finish', reason: { kind: 'stop' } })
-    expect(assembler.traceMeta).toEqual({ responseTraceparent: '00-bb7424f8effb4411008f0b7d04f0b07f-a1b2c3d4e5f67890-01', traceId: 'bb7424f8effb4411008f0b7d04f0b07f', requestId: 'req-123', receivedAt: '2026-08-24T00:00:00.000Z' })
-  })
-
-  it('returns undefined traceMeta when no trace-meta chunk was received', () => {
-    const assembler = new BlockAssembler()
-    assembler.push({ type: 'text-delta', index: 0, text: 'msg' })
-    assembler.push({ type: 'finish', reason: { kind: 'stop' } })
-    expect(assembler.traceMeta).toBeUndefined()
-  })
 })
 
 describe('assertNever', () => {

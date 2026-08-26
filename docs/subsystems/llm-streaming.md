@@ -153,27 +153,9 @@ type ContextFormed =
 
 <a id="streamchunk--the-raw-protocol"></a>
 
-## `GatewayResponseCorrelation` and `RequestTrace` — gateway trace correlation
+## `RequestTrace` — outbound gateway context
 
-When the model endpoint sits behind a gateway (e.g. Higress) that generates W3C trace context, the adapter injects `traceparent` and `X-Agent-*` headers on the way out, then reads `traceparent` and `x-request-id` from the response. The captured correlation ids travel as a `trace-meta` chunk through the stream and land on the `assistant/message` session event. A returned traceparent is named `responseTraceparent`: it is evidence for reverse query, never context for a later outbound request.
-
-```ts type-equiv
-/**
- * Gateway response correlation captured from HTTP headers. `responseTraceparent` and
- * `x-request-id` are independent: either may be absent without discarding the
- * other. The receive time is local to the observation.
- */
-interface GatewayResponseCorrelation {
-  /** Full valid W3C `traceparent` returned by the gateway, when supplied. */
-  responseTraceparent?: string
-  /** W3C trace-id parsed from `responseTraceparent`, when supplied. */
-  traceId?: GatewayTraceId
-  /** Gateway request ID parsed from `x-request-id`, when supplied. */
-  requestId?: GatewayRequestId
-  /** ISO-8601 time when the response headers were received. */
-  receivedAt: string
-}
-```
+When a model endpoint sits behind a gateway such as Higress, the adapter injects `traceparent` and `X-Agent-*` headers on the outbound request. Harness does not read or persist gateway response headers; the OTLP backend is the source of trace observation.
 
 ```ts type-equiv
 /**
@@ -215,7 +197,6 @@ type StreamChunk =
   | { type: 'tool-call-delta'; index: number; id: CallId; name?: string; argumentsDelta: string }
   | { type: 'block-end'; index: number; block: ContentBlock }
   | { type: 'usage'; usage: TokenUsage }
-  | { type: 'trace-meta'; traceMeta: GatewayResponseCorrelation }
   | {
     type: 'finish'
     reason: FinishReason
@@ -337,8 +318,6 @@ declare class BlockAssembler {
   blocks(): ContentBlock[];
   /** Usage from the `usage` chunk; undefined until one arrives. */
   get usage(): TokenUsage | undefined;
-  /** Gateway trace correlation from the `trace-meta` chunk; undefined until one arrives. */
-  get traceMeta(): GatewayResponseCorrelation | undefined;
   /** Finish reason from the `finish` chunk; `{kind: 'stop'}` when the stream ended without one. */
   get finish(): FinishReason;
   /** Adapter-private replay state from the terminal finish chunk, if any. */
@@ -544,8 +523,7 @@ interface GenerateOptions {
   /**
    * Gateway trace context to inject into the outgoing HTTP request. When set,
    * the adapter writes `traceparent` and `X-Agent-*` headers; when absent,
-   * the adapter emits no trace headers. The adapter also reads `traceparent`
-   * and `x-request-id` from the response and emits a `trace-meta` chunk.
+   * the adapter emits no trace headers.
    */
   requestTrace?: RequestTrace
 }

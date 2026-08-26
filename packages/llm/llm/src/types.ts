@@ -280,46 +280,6 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
   reasoning?: LlmModelReasoningInfo
 }
 
-/** Opaque W3C trace identifier parsed from a gateway response header. */
-export type GatewayTraceId = Branded<'GatewayTraceId'>
-
-/**
- * Brand a gateway trace id at a parsed HTTP boundary.
- * @param value - parsed trace id.
- * @returns branded trace id.
- */
-export function GatewayTraceId(value: string): GatewayTraceId {
-  return value as GatewayTraceId
-}
-
-/** Opaque request identifier issued by a gateway. */
-export type GatewayRequestId = Branded<'GatewayRequestId'>
-
-/**
- * Brand a gateway request id at a parsed HTTP boundary.
- * @param value - parsed request id.
- * @returns branded request id.
- */
-export function GatewayRequestId(value: string): GatewayRequestId {
-  return value as GatewayRequestId
-}
-
-/**
- * Gateway response correlation captured from HTTP headers. `responseTraceparent` and
- * `x-request-id` are independent: either may be absent without discarding the
- * other. The receive time is local to the observation.
- */
-export interface GatewayResponseCorrelation {
-  /** Full valid W3C `traceparent` returned by the gateway, when supplied. */
-  responseTraceparent?: string
-  /** W3C trace-id parsed from `responseTraceparent`, when supplied. */
-  traceId?: GatewayTraceId
-  /** Gateway request ID parsed from `x-request-id`, when supplied. */
-  requestId?: GatewayRequestId
-  /** ISO-8601 time when the response headers were received. */
-  receivedAt: string
-}
-
 /**
  * Gateway trace context to inject into the outgoing request. The agent loop
  * populates this from the active Agent execution before each model request; the adapter
@@ -351,7 +311,6 @@ export type StreamChunk =
   | { type: 'tool-call-delta'; index: number; id: CallId; name?: string; argumentsDelta: string }
   | { type: 'block-end'; index: number; block: ContentBlock }
   | { type: 'usage'; usage: TokenUsage }
-  | { type: 'trace-meta'; traceMeta: GatewayResponseCorrelation }
   | {
     type: 'finish'
     reason: FinishReason
@@ -413,8 +372,7 @@ export interface GenerateOptions {
   /**
    * Gateway trace context to inject into the outgoing HTTP request. When set,
    * the adapter writes `traceparent` and `X-Agent-*` headers; when absent,
-   * the adapter emits no trace headers. The adapter also reads `traceparent`
-   * and `x-request-id` from the response and emits a `trace-meta` chunk.
+   * the adapter emits no trace headers.
    */
   requestTrace?: RequestTrace
 }

@@ -642,72 +642,6 @@ Depends on: [`LocalConfig`](#deepseek-aidsh-fs-local)
 
 Source: [`packages/fs/fs-sandbox/src/index.ts:49`](../packages/fs/fs-sandbox/src/index.ts)
 
-<a id="deepseek-aidsh-gateway-trace-console"></a>
-
-## `@deepseek-ai/dsh-gateway-trace-console`
-
-```ts config-catalog
-/** Local, trusted-service provider configuration for Higress Console. */
-export interface GatewayTraceConsoleConfig {
-  /** Base URL of Higress Console, which serves `/v1/observability/*`. */
-  consoleBaseUrl: string
-  /** Credential reference resolving to the Console HTTP Basic username. */
-  basicUsernameRef?: string
-  /** Credential reference resolving to the Console HTTP Basic password. */
-  basicPasswordRef?: string
-  /** Enable automatic background reflection from response-correlated stages. */
-  reflect?: boolean
-  /** Configurable retry policy for transient Console/data-plane lag. */
-  retry?: GatewayTraceRetry
-}
-
-/** Retry policy for eventual consistency between the data plane and Console. */
-export interface GatewayTraceRetry {
-  /** Maximum reverse-query attempts for one response correlation. */
-  maxRetries?: number
-  /** Initial retry delay in milliseconds. */
-  initialDelayMs?: number
-  /** Largest retry delay in milliseconds. */
-  maxDelayMs?: number
-  /** Maximum background reverse queries running at once. */
-  maxConcurrentQueries?: number
-}
-```
-
-Source: [`packages/gateway/gateway-trace-console/src/types.ts:16`](../packages/gateway/gateway-trace-console/src/types.ts)
-
-<a id="deepseek-aidsh-gateway-trace-query"></a>
-
-## `@deepseek-ai/dsh-gateway-trace-query`
-
-```ts config-catalog
-/** Gateway Trace Query service-account configuration. */
-export interface GatewayTraceQueryConfig {
-  /** Gateway Trace Query base URL ending in `/__higress/trace-query/v1`. */
-  traceQueryBaseUrl: string
-  /** Credential reference resolving to the service-account Bearer token. */
-  tokenRef?: string
-  /** Whether response-correlated stages are reflected in the background. */
-  reflect?: boolean
-  /** Retry configuration for background reflection. */
-  retry?: GatewayTraceQueryRetry
-}
-
-/** Retry policy for background visibility lag and service unavailability. */
-export interface GatewayTraceQueryRetry {
-  /** Maximum attempts including the initial query. */
-  maxAttempts?: number
-  /** Initial backoff delay in milliseconds. */
-  initialDelayMs?: number
-  /** Largest backoff delay in milliseconds. */
-  maxDelayMs?: number
-  /** Maximum background queries running at once. */
-  maxConcurrentQueries?: number
-}
-```
-
-Source: [`packages/gateway/gateway-trace-query/src/index.ts:24`](../packages/gateway/gateway-trace-query/src/index.ts)
-
 <a id="deepseek-aidsh-goal"></a>
 
 ## `@deepseek-ai/dsh-goal`
@@ -3240,7 +3174,6 @@ Abstract service classes — a deployment loads a concrete implementation packag
 - `@deepseek-ai/dsh-compaction` — abstract `CompactionEngine` ([`packages/compaction/compaction/src/index.ts`](../packages/compaction/compaction/src/index.ts))
 - `@deepseek-ai/dsh-credentials` — abstract `CredentialProvider` ([`packages/credentials/credentials/src/index.ts`](../packages/credentials/credentials/src/index.ts))
 - `@deepseek-ai/dsh-fs` — abstract `FileSystem` ([`packages/fs/fs/src/index.ts`](../packages/fs/fs/src/index.ts))
-- `@deepseek-ai/dsh-gateway-trace` — abstract `GatewayTraceService` ([`packages/gateway/gateway-trace/src/index.ts`](../packages/gateway/gateway-trace/src/index.ts))
 - `@deepseek-ai/dsh-host-directory-picker` — abstract `DirectoryPicker` ([`packages/host/directory-picker/src/index.ts`](../packages/host/directory-picker/src/index.ts))
 - `@deepseek-ai/dsh-jobs` — abstract `JobRegistry` ([`packages/jobs/jobs/src/index.ts`](../packages/jobs/jobs/src/index.ts))
 - `@deepseek-ai/dsh-sandbox` — abstract `SandboxProvider` ([`packages/sandbox/sandbox/src/index.ts`](../packages/sandbox/sandbox/src/index.ts))
@@ -3272,7 +3205,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@deepseek-ai/dsh-client-web` ([`packages/client/web/src/index.ts`](../packages/client/web/src/index.ts))
 - `@deepseek-ai/dsh-client-web-react` ([`packages/client/web-react/src/index.ts`](../packages/client/web-react/src/index.ts))
 - `@deepseek-ai/dsh-cmdline` ([`packages/boot/cmdline/src/index.ts`](../packages/boot/cmdline/src/index.ts))
-- `@deepseek-ai/dsh-higress-trace` ([`packages/bundle/higress-trace/src/index.ts`](../packages/bundle/higress-trace/src/index.ts))
 - `@deepseek-ai/dsh-home-paths` ([`packages/util/home-paths/src/index.ts`](../packages/util/home-paths/src/index.ts))
 - `@deepseek-ai/dsh-hook-protocol` ([`packages/hooks/hook-protocol/src/index.ts`](../packages/hooks/hook-protocol/src/index.ts))
 - `@deepseek-ai/dsh-launch-environment` ([`packages/util/launch-environment/src/index.ts`](../packages/util/launch-environment/src/index.ts))

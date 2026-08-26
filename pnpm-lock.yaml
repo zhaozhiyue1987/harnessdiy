@@ -1259,31 +1259,6 @@ importers:
         specifier: workspace:^
         version: link:../../core/session
 
-  packages/bundle/higress-trace:
-    dependencies:
-      '@deepseek-ai/dsh-gateway-trace':
-        specifier: workspace:^
-        version: link:../../gateway/gateway-trace
-      '@deepseek-ai/dsh-gateway-trace-console':
-        specifier: workspace:^
-        version: link:../../gateway/gateway-trace-console
-      '@deepseek-ai/dsh-gateway-trace-query':
-        specifier: workspace:^
-        version: link:../../gateway/gateway-trace-query
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-telemetry':
-        specifier: workspace:^
-        version: link:../../telemetry/telemetry
-      '@deepseek-ai/dsh-telemetry-otel':
-        specifier: workspace:^
-        version: link:../../telemetry/telemetry-otel
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-
   packages/bundle/mcp-dsh:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -2994,9 +2969,6 @@ importers:
       '@deepseek-ai/dsh-compaction':
         specifier: workspace:^
         version: link:../../compaction/compaction
-      '@deepseek-ai/dsh-gateway-trace':
-        specifier: workspace:^
-        version: link:../../gateway/gateway-trace
       '@deepseek-ai/dsh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
@@ -4490,74 +4462,6 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: workspace:^
         version: link:../../core/tools
-
-  packages/gateway/gateway-trace:
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-brand':
-        specifier: workspace:^
-        version: link:../../util/brand
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-llm':
-        specifier: workspace:^
-        version: link:../../llm/llm
-      '@deepseek-ai/dsh-session':
-        specifier: workspace:^
-        version: link:../../core/session
-
-  packages/gateway/gateway-trace-console:
-    dependencies:
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-credentials':
-        specifier: workspace:^
-        version: link:../../credentials/credentials
-      '@deepseek-ai/dsh-gateway-trace':
-        specifier: workspace:^
-        version: link:../gateway-trace
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-llm':
-        specifier: workspace:^
-        version: link:../../llm/llm
-      '@deepseek-ai/dsh-session':
-        specifier: workspace:^
-        version: link:../../core/session
-
-  packages/gateway/gateway-trace-query:
-    dependencies:
-      '@deepseek-ai/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-    devDependencies:
-      '@deepseek-ai/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@deepseek-ai/dsh-credentials':
-        specifier: workspace:^
-        version: link:../../credentials/credentials
-      '@deepseek-ai/dsh-gateway-trace':
-        specifier: workspace:^
-        version: link:../gateway-trace
-      '@deepseek-ai/dsh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@deepseek-ai/dsh-llm':
-        specifier: workspace:^
-        version: link:../../llm/llm
-      '@deepseek-ai/dsh-session':
-        specifier: workspace:^
-        version: link:../../core/session
 
   packages/goal/command-goal:
     devDependencies:
